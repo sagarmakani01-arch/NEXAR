@@ -75,7 +75,17 @@ class ProjectManager {
     const project = await projectOps.get(projectId);
     if (!project) return null;
     
-    const files = await fileService.getFileTree(project.path);
+    let files = [];
+    try {
+      await fs.access(project.path);
+      files = await fileService.getFileTree(project.path);
+    } catch {
+      // Project directory missing (e.g., after Render restart) — recreate
+      await fs.mkdir(project.path, { recursive: true });
+      await this.initGit(project.path);
+      await this.createDefaultFiles(project.path, project.framework || 'vite-react');
+      files = await fileService.getFileTree(project.path);
+    }
     return { ...project, files };
   }
 
