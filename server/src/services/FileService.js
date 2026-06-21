@@ -71,8 +71,9 @@ class FileService {
    * Write file content
    */
   async writeFile(projectPath, filePath, content) {
-    const fullPath = path.join(projectPath, filePath);
-    if (!fullPath.startsWith(path.resolve(projectPath))) {
+    const resolvedRoot = path.resolve(projectPath);
+    const fullPath = path.join(resolvedRoot, filePath);
+    if (!fullPath.startsWith(resolvedRoot)) {
       throw new Error('Invalid file path');
     }
     await fs.mkdir(path.dirname(fullPath), { recursive: true });
