@@ -18,6 +18,17 @@ router.get('/status', async (req, res) => {
     model: m.model
   }));
 
+  // Debug provider config
+  const providers = ollamaService.config.providers;
+  const debugProviders = {};
+  for (const [name, cfg] of Object.entries(providers)) {
+    debugProviders[name] = {
+      baseURL: cfg.baseURL,
+      hasKey: !!cfg.apiKey,
+      keyPrefix: cfg.apiKey ? cfg.apiKey.substring(0, 8) + '...' : null
+    };
+  }
+
   try {
     const modelId = req.query.model || 'ollama-default';
     const cfg = ollamaService.getConfig(modelId);
@@ -38,6 +49,7 @@ router.get('/status', async (req, res) => {
       modelCount: modelList.length,
       models: modelList.map(m => m.id || m.name || m.model),
       configuredModels,
+      debugProviders,
       usage: {
         groq: {
           daily: rateMonitor.getDailyUsage('groq'),
@@ -58,6 +70,7 @@ router.get('/status', async (req, res) => {
       model: process.env.OLLAMA_MODEL || 'qwen2.5-coder:7b',
       baseURL: process.env.OLLAMA_BASE_URL || 'http://host.docker.internal:11434/v1',
       configuredModels,
+      debugProviders,
       usage: {
         groq: {
           daily: rateMonitor.getDailyUsage('groq'),
