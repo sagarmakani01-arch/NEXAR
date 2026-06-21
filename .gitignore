@@ -11,3 +11,4 @@ Thumbs.db
 client/.env.vercel
 
 server/.env
+.vercel
