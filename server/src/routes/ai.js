@@ -95,7 +95,7 @@ router.use(authenticate);
  */
 router.post('/generate-project', async (req, res) => {
   try {
-    const { specification, framework = 'vite-react', projectName } = req.body;
+    const { specification, framework = 'vite-react', projectName, options } = req.body;
     
     if (!specification) {
       return res.status(400).json({ error: 'Specification is required' });
@@ -118,7 +118,7 @@ router.post('/generate-project', async (req, res) => {
     const projectContext = { projectFiles: {} };
     let fileManifest = '';
 
-    for await (const chunk of ollamaService.generateProject(specification)) {
+    for await (const chunk of ollamaService.generateProject(specification, options || {})) {
       fileManifest += chunk;
       res.write(`data: ${JSON.stringify({ type: 'chunk', content: chunk })}\n\n`);
     }

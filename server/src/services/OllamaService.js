@@ -128,7 +128,7 @@ Format each file as:
     yield* this.generateCode(prompt, {}, {
       systemPrompt: this.config.systemPrompts.fullStack,
       modelId: options.modelId,
-      params: { max_tokens: 16384 }
+      params: { ...options.params, max_tokens: options.params?.max_tokens || 4096 }
     });
   }
 
