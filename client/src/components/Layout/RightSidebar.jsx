@@ -51,7 +51,7 @@ export default function RightSidebar() {
       </div>
 
       {/* Panel Content - keep all mounted so agent/cursors survive tab switches */}
-      <div className="flex-1 overflow-hidden relative">
+      <div className="flex-1 relative">
         <div className="absolute inset-0" style={{ display: panel === 'ai' ? 'block' : 'none' }}><AIChatPanel /></div>
         <div className="absolute inset-0" style={{ display: panel === 'preview' ? 'block' : 'none' }}><PreviewPanel /></div>
         <div className="absolute inset-0" style={{ display: panel === 'published' ? 'block' : 'none' }}><PublishedPanel /></div>

@@ -345,7 +345,7 @@ export default function AIChatPanel() {
               <ChevronDown className="w-3.5 h-3.5" />
             </button>
             {showModelSelect && (
-              <div className="absolute top-full left-0 mt-1 w-80 max-h-80 overflow-y-scroll bg-white dark:bg-dark-secondary border border-gray-200 dark:border-dark-border rounded-lg shadow-lg py-1 z-50">
+              <div className="absolute top-full left-0 mt-1 w-96 max-h-96 overflow-y-auto bg-white dark:bg-dark-secondary border border-gray-200 dark:border-dark-border rounded-lg shadow-lg py-1 z-[100] scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
                 {modelOptions.map(model => (
                   <button
                     key={model.value}
