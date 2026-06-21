@@ -20,9 +20,10 @@ export async function initializeDatabase() {
 async function initPostgres() {
   isPostgres = true;
   const ssl = process.env.PGSSLMODE === 'require' ? { rejectUnauthorized: false } : false;
-  const safeUrl = DATABASE_URL.replace(/\/\/[^@]+@/, '//***:***@');
+  const url = DATABASE_URL.replace(/\.$/, '');
+  const safeUrl = url.replace(/\/\/[^@]+@/, '//***:***@');
   console.log('Connecting to DB:', safeUrl);
-  pool = new pg.Pool({ connectionString: DATABASE_URL, ssl });
+  pool = new pg.Pool({ connectionString: url, ssl });
 
   const client = await pool.connect();
   try {
