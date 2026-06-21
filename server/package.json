@@ -1,0 +1,37 @@
+{
+  "name": "nexar-server",
+  "version": "1.0.0",
+  "description": "NEXAR server — AI-powered development platform",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "db:init": "node src/config/database.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "archiver": "^6.0.1",
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^12.10.0",
+    "chokidar": "^3.5.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "openai": "^4.20.1",
+    "pg": "^8.22.0",
+    "socket.io": "^4.7.2",
+    "tar": "^6.2.0",
+    "tree-kill": "^1.2.2",
+    "uuid": "^9.0.1",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.1.14"
+  }
+}

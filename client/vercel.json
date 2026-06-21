@@ -1,0 +1,10 @@
+{
+  "buildCommand": "vite build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "https://hart-tuner-total-significance.trycloudflare.com/api/$1" },
+
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
+

@@ -1,0 +1,68 @@
+services:
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: ai-builder-server
+    volumes:
+      - ./server/src:/app/src
+      - project_data:/data/projects
+      - server_data:/app/data
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      CORS_ORIGINS: '*'
+      JWT_SECRET: ${JWT_SECRET:-generate_strong_secret}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5-coder:7b}
+      CLIENT_URL: ${CLIENT_URL:-http://localhost:5173}
+      PROJECTS_DIR: /data/projects
+      DB_PATH: /app/data/ai-builder.db
+    ports:
+      - "3001:3001"
+    networks:
+      - ai-builder-network
+    restart: unless-stopped
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: ai-builder-client
+    volumes:
+      - ./client/src:/app/src
+      - ./client/vite.config.js:/app/vite.config.js
+    environment:
+      VITE_API_URL: http://localhost:3001/api
+      VITE_PROXY_TARGET: http://server:3001
+    ports:
+      - "5173:5173"
+    networks:
+      - ai-builder-network
+    restart: unless-stopped
+
+  nginx:
+    image: nginxinc/nginx-unprivileged:stable-alpine@sha256:fafa1102c789119971b3d83f9293f1ef5526bc73583a12e13ff5cd1299ed8b6c
+    container_name: ai-builder-nginx
+    cap_add:
+      - NET_BIND_SERVICE
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - server
+      - client
+    networks:
+      - ai-builder-network
+    restart: unless-stopped
+
+volumes:
+  project_data:
+  server_data:
+
+networks:
+  ai-builder-network:
+    driver: bridge
