@@ -3,6 +3,7 @@ import { useAuthStore } from './store/authStore.js';
 import { useProjectStore } from './store/projectStore.js';  // Fixed: useProjectStore (capital P)
 import MainLayout from './components/Layout/MainLayout';
 import LoginForm from './components/Auth/LoginForm';
+import LandingPage from './components/LandingPage';
 import { useEffect } from 'react';
 
 function ProtectedRoute({ children }) {
@@ -23,7 +24,7 @@ function PublicRoute({ children }) {
   const { isAuthenticated } = useAuthStore();
   
   if (isAuthenticated) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/app" replace />;
   }
 
   return children;
@@ -41,13 +42,19 @@ export default function App() {
 
   return (
     <Routes>
+      <Route path="/" element={
+        <PublicRoute>
+          <LandingPage />
+        </PublicRoute>
+      } />
+      
       <Route path="/login" element={
         <PublicRoute>
           <LoginForm />
         </PublicRoute>
       } />
       
-      <Route path="/*" element={
+      <Route path="/app/*" element={
         <ProtectedRoute>
           <MainLayout />
         </ProtectedRoute>
