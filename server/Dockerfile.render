@@ -4,10 +4,10 @@ WORKDIR /app
 
 RUN apk add --no-cache git python3 make g++
 
-COPY package*.json ./
+COPY server/package*.json ./
 RUN npm install --only=production
 
-COPY src/ ./src/
+COPY server/src/ ./src/
 
 RUN mkdir -p /data/projects /data/builds /data/deployments /data/published /data/uploads
 
