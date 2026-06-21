@@ -326,6 +326,8 @@ app.listen(PORT, () => console.log(\`Server running on \${PORT}\`))`,
     try {
       const { execSync } = await import('child_process');
       execSync('git init', { cwd: projectPath, stdio: 'ignore' });
+      execSync('git config user.email "nexar@local.dev"', { cwd: projectPath, stdio: 'ignore' });
+      execSync('git config user.name "NEXAR"', { cwd: projectPath, stdio: 'ignore' });
       execSync('git add .', { cwd: projectPath, stdio: 'ignore' });
       execSync('git commit -m "Initial commit"', { cwd: projectPath, stdio: 'ignore' });
     } catch (e) {
