@@ -126,8 +126,13 @@ router.post('/generate-project', async (req, res) => {
     // Parse file manifest and write files
     const files = parseFileManifest(fileManifest);
     for (const [filePath, content] of Object.entries(files)) {
-      await fileService.writeFile(project.path, filePath, content);
-      res.write(`data: ${JSON.stringify({ type: 'file', filePath, content })}\n\n`);
+      try {
+        await fileService.writeFile(project.path, filePath, content);
+        res.write(`data: ${JSON.stringify({ type: 'file', filePath, content })}\n\n`);
+      } catch (fileErr) {
+        console.error(`[generate-project] Skipping file "${filePath}": ${fileErr.message}`);
+        res.write(`data: ${JSON.stringify({ type: 'skip', filePath, reason: fileErr.message })}\n\n`);
+      }
     }
 
     res.write(`data: ${JSON.stringify({ type: 'complete', project })}\n\n`);
@@ -207,7 +212,11 @@ function parseFileManifest(manifest) {
   const regex = /===FILE: (.*?)===\n([\s\S]*?)===ENDFILE===/g;
   let match;
   while ((match = regex.exec(manifest)) !== null) {
-    files[match[1].trim()] = match[2].trim();
+    let filePath = match[1].trim();
+    filePath = filePath.replace(/^[/\\]+/, '').replace(/[/\\]+$/, '');
+    if (filePath) {
+      files[filePath] = match[2].trim();
+    }
   }
   return files;
 }
