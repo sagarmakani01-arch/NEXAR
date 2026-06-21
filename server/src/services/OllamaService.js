@@ -1,33 +1,59 @@
-import OpenAI from 'openai';
 import { ollamaConfig } from '../config/ollama.js';
 import { rateMonitor } from './ProviderRateMonitor.js';
 
 class OllamaService {
   constructor() {
     this.config = ollamaConfig;
-    this.clients = {};
-  }
-
-  getClient(provider) {
-    if (!this.clients[provider]) {
-      this.clients[provider] = new OpenAI({
-        apiKey: this.config.providers[provider].apiKey,
-        baseURL: this.config.providers[provider].baseURL,
-        timeout: 600000,
-        maxRetries: 0,
-      });
-    }
-    return this.clients[provider];
   }
 
   getConfig(modelId) {
     return this.config.getModelConfig(modelId);
   }
 
+  async fetchStream(baseURL, apiKey, body) {
+    const url = baseURL.replace(/\/+$/, '') + '/chat/completions';
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new Error(`API error ${resp.status}: ${text.slice(0, 200)}`);
+    }
+    return resp;
+  }
+
+  async *streamSSE(resp) {
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6).trim();
+          if (data === '[DONE]') return;
+          try {
+            const parsed = JSON.parse(data);
+            const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.text || '';
+            if (content) yield content;
+          } catch {}
+        }
+      }
+    }
+  }
+
   async *generateCode(prompt, context = {}, options = {}) {
     const modelId = options.modelId || 'ollama-default';
     const cfg = this.getConfig(modelId);
-    const client = this.getClient(cfg.provider || 'ollama');
     const systemPrompt = options.systemPrompt || this.config.systemPrompts.codeGeneration;
 
     const messages = [
@@ -36,18 +62,16 @@ class OllamaService {
       { role: 'user', content: this.buildPrompt(prompt, context) }
     ];
 
-    const stream = await client.chat.completions.create({
+    const body = {
       model: cfg.model,
       messages,
+      stream: true,
       ...cfg.defaultParams,
       ...options.params,
-      stream: true
-    });
+    };
 
-    for await (const chunk of stream) {
-      const content = chunk.choices[0]?.delta?.content || '';
-      if (content) yield content;
-    }
+    const resp = await this.fetchStream(cfg.baseURL, cfg.apiKey, body);
+    yield* this.streamSSE(resp);
   }
 
   async generateComplete(prompt, context = {}, options = {}) {
@@ -111,39 +135,34 @@ Format each file as:
   async *chat(messages, options = {}) {
     const modelId = options.modelId || 'ollama-default';
     let cfg = this.getConfig(modelId);
-    let client = this.getClient(cfg.provider || 'ollama');
     let attempt = 0;
     const maxAttempts = 2;
 
     while (attempt < maxAttempts) {
       try {
-        // Only prepend a system prompt if messages don't already have one
         const hasSystem = messages.some(m => m.role === 'system');
         const fullMessages = hasSystem ? messages : [
           { role: 'system', content: options.systemPrompt || this.config.systemPrompts.codeGeneration },
           ...messages
         ];
 
-        const stream = await client.chat.completions.create({
+        const body = {
           model: cfg.model,
           messages: fullMessages,
+          stream: true,
           ...cfg.defaultParams,
           ...options.params,
-          stream: true
-        });
+        };
 
-        for await (const chunk of stream) {
-          const content = chunk.choices[0]?.delta?.content || '';
-          if (content) yield content;
-        }
-        return; // Success — exit generator
+        const resp = await this.fetchStream(cfg.baseURL, cfg.apiKey, body);
+        yield* this.streamSSE(resp);
+        return;
       } catch (error) {
         const is429 = error.status === 429 || (error.message && error.message.includes('429'));
         if (is429 && attempt === 0) {
           console.log(`[OllamaService] 429 rate limit on ${cfg.provider}, falling back to ollama`);
           rateMonitor.recordRateLimit(cfg.provider);
           cfg = this.getConfig('ollama-default');
-          client = this.getClient('ollama');
           attempt++;
           continue;
         }
