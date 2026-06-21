@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: nexar-api
+    env: docker
+    dockerfilePath: server/Dockerfile.render
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: CLIENT_URL
+        value: https://nexar-beta-seven-89.vercel.app
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 30d
+      - key: PGSSLMODE
+        value: require
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nexar-db
+          property: connectionString
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+
+databases:
+  - name: nexar-db
+    plan: free
+    databaseName: nexar
