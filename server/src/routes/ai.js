@@ -233,5 +233,32 @@ async function getProjectFilesAsObject(projectPath) {
 
 import fs from 'fs/promises';
 import path from 'path';
+import https from 'https';
+
+router.get('/test-connectivity', async (req, res) => {
+  const results = {};
+  const services = [
+    { name: 'Groq', url: 'https://api.groq.com/openai/v1/models', key: process.env.GROQ_API_KEY },
+    { name: 'OpenRouter', url: 'https://openrouter.ai/api/v1/models', key: process.env.OPENROUTER_API_KEY },
+    { name: 'Ollama', url: 'http://host.docker.internal:11434/v1/models', key: null },
+  ];
+  for (const svc of services) {
+    const start = Date.now();
+    try {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 5000);
+      const headers = svc.key ? { Authorization: `Bearer ${svc.key}` } : {};
+      const resp = await fetch(svc.url, { method: 'GET', headers, signal: controller.signal });
+      results[svc.name] = { status: resp.status, ok: resp.ok, ms: Date.now() - start };
+    } catch (e) {
+      results[svc.name] = { error: e.message, ms: Date.now() - start };
+    }
+  }
+  res.json({
+    hasGroqKey: !!process.env.GROQ_API_KEY,
+    hasOpenRouterKey: !!process.env.OPENROUTER_API_KEY,
+    results
+  });
+});
 
 export default router;
