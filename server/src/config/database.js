@@ -1,256 +1,304 @@
-import { Firestore } from '@google-cloud/firestore';
+import pg from 'pg';
+import Database from 'better-sqlite3';
+import fs from 'fs/promises';
+import path from 'path';
 
-const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT || 'nexar-app';
+const DATABASE_URL = process.env.DATABASE_URL;
+const DB_PATH = process.env.DB_PATH || './data/ai-builder.db';
 
-let firestore = null;
+let pool = null;     // PostgreSQL pool
+let db = null;       // SQLite instance
+let isPostgres = false;
 
 export async function initializeDatabase() {
-  firestore = new Firestore({
-    projectId: PROJECT_ID,
-    ...(process.env.FIRESTORE_EMULATOR_HOST ? {} : {})
-  });
-
-  await ensureCollections();
-  console.log('Database initialized (Firestore)');
-  return firestore;
-}
-
-async function ensureCollections() {
-  const collections = ['users', 'projects', 'builds', 'deployments', 'deployment_logs', 'ai_chats', 'project_collaborators'];
-  for (const name of collections) {
-    const ref = firestore.collection(name);
-    const snap = await ref.limit(1).get();
-    if (snap.empty) {
-      await ref.doc('_seed').set({ _created: new Date().toISOString() });
-      await ref.doc('_seed').delete();
-    }
+  if (DATABASE_URL && (DATABASE_URL.startsWith('postgresql://') || DATABASE_URL.startsWith('postgres://'))) {
+    return initPostgres();
   }
+  return initSqlite();
 }
 
-function doc(collection, id) {
-  return firestore.collection(collection).doc(id);
-}
+async function initPostgres() {
+  isPostgres = true;
+  const ssl = process.env.PGSSLMODE === 'require' ? { rejectUnauthorized: false } : false;
+  pool = new pg.Pool({ connectionString: DATABASE_URL.replace(/\.$/, ''), ssl });
 
-function now() {
-  return new Date().toISOString();
-}
-
-function snapshotToDoc(snap) {
-  if (!snap.exists) return null;
-  return { id: snap.id, ...snap.data() };
-}
-
-async function queryDocs(collection, queries, orderByField, orderDir = 'desc', limit) {
-  let ref = firestore.collection(collection);
-  for (const q of queries) {
-    ref = ref.where(q.field, q.op, q.value);
+  const client = await pool.connect();
+  try {
+    await client.query('SELECT 1');
+  } finally {
+    client.release();
   }
-  if (orderByField) {
-    ref = ref.orderBy(orderByField, orderDir);
+
+  await createTablesPostgres();
+  console.log('Database initialized (PostgreSQL)');
+  return pool;
+}
+
+function initSqlite() {
+  const dataDir = path.dirname(DB_PATH);
+  fs.mkdir(dataDir, { recursive: true }).catch(() => {});
+
+  db = new Database(DB_PATH);
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
+
+  createTablesSqlite();
+  console.log('Database initialized (SQLite) at:', DB_PATH);
+  return db;
+}
+
+function query(sqlStr, params = []) {
+  if (isPostgres) {
+    if (!pool) throw new Error('Database not initialized');
+    return pool.query(sqlStr, params);
   }
-  if (limit) {
-    ref = ref.limit(limit);
+  if (!db) throw new Error('Database not initialized');
+  // SQLite synchronous wrapper
+  const stmt = db.prepare(sqlStr);
+  if (sqlStr.trim().toUpperCase().startsWith('SELECT') || sqlStr.trim().toUpperCase().startsWith('WITH') || sqlStr.includes('RETURNING')) {
+    const rows = stmt.all(...params);
+    return { rows, rowCount: rows.length };
   }
-  const snap = await ref.get();
-  return snap.docs.map(d => snapshotToDoc(d));
+  const result = stmt.run(...params);
+  return { rowCount: result.changes, rows: [] };
+}
+
+async function queryOne(sqlStr, params = []) {
+  const r = await query(sqlStr, params);
+  return r.rows[0] || null;
+}
+
+async function queryAll(sqlStr, params = []) {
+  const r = await query(sqlStr, params);
+  return r.rows;
+}
+
+async function execute(sqlStr, params = []) {
+  return query(sqlStr, params);
+}
+
+async function createTablesPostgres() {
+  const tables = [
+    `CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT,
+      name TEXT, avatar_url TEXT, provider TEXT, provider_id TEXT,
+      totp_secret TEXT, totp_enabled BOOLEAN DEFAULT FALSE, recovery_codes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS projects (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, description TEXT,
+      framework TEXT DEFAULT 'vite-react', path TEXT NOT NULL, status TEXT DEFAULT 'active',
+      created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`,
+    `CREATE TABLE IF NOT EXISTS builds (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL, status TEXT DEFAULT 'pending',
+      output_path TEXT, error TEXT, started_at TIMESTAMPTZ DEFAULT NOW(), completed_at TIMESTAMPTZ,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    )`,
+    `CREATE TABLE IF NOT EXISTS deployments (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL, status TEXT DEFAULT 'pending',
+      url TEXT, error TEXT, config TEXT, started_at TIMESTAMPTZ DEFAULT NOW(), completed_at TIMESTAMPTZ,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    )`,
+    `CREATE TABLE IF NOT EXISTS deployment_logs (
+      id SERIAL PRIMARY KEY, deployment_id TEXT NOT NULL, level TEXT DEFAULT 'info',
+      message TEXT NOT NULL, metadata TEXT, created_at TIMESTAMPTZ DEFAULT NOW(),
+      FOREIGN KEY (deployment_id) REFERENCES deployments(id) ON DELETE CASCADE
+    )`,
+    `CREATE TABLE IF NOT EXISTS ai_chats (
+      id TEXT PRIMARY KEY, project_id TEXT, user_id TEXT NOT NULL, messages TEXT NOT NULL,
+      model TEXT DEFAULT 'ollama-default', created_at TIMESTAMPTZ DEFAULT NOW(),
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`,
+    `CREATE TABLE IF NOT EXISTS project_collaborators (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL, user_id TEXT NOT NULL,
+      role TEXT DEFAULT 'viewer', created_at TIMESTAMPTZ DEFAULT NOW(),
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(project_id, user_id)
+    )`
+  ];
+  for (const sql of tables) {
+    await execute(sql);
+  }
+  // Migrate existing tables — add 2FA columns if missing
+  const pgMigrations = [
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT FALSE`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS recovery_codes TEXT`,
+  ];
+  for (const sql of pgMigrations) {
+    try { await execute(sql); } catch (e) { /* column may already exist */ }
+  }
+  await execute(`
+    CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id);
+    CREATE INDEX IF NOT EXISTS idx_builds_project ON builds(project_id);
+    CREATE INDEX IF NOT EXISTS idx_deployments_project ON deployments(project_id);
+    CREATE INDEX IF NOT EXISTS idx_ai_chats_project ON ai_chats(project_id);
+    CREATE INDEX IF NOT EXISTS idx_collaborators_project ON project_collaborators(project_id);
+  `);
+}
+
+function createTablesSqlite() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT,
+      name TEXT, avatar_url TEXT, provider TEXT, provider_id TEXT,
+      totp_secret TEXT, totp_enabled INTEGER DEFAULT 0, recovery_codes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS projects (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, description TEXT,
+      framework TEXT DEFAULT 'vite-react', path TEXT NOT NULL, status TEXT DEFAULT 'active',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS builds (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL, status TEXT DEFAULT 'pending',
+      output_path TEXT, error TEXT, started_at DATETIME DEFAULT CURRENT_TIMESTAMP, completed_at DATETIME,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS deployments (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL, status TEXT DEFAULT 'pending',
+      url TEXT, error TEXT, config TEXT, started_at DATETIME DEFAULT CURRENT_TIMESTAMP, completed_at DATETIME,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS deployment_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, deployment_id TEXT NOT NULL, level TEXT DEFAULT 'info',
+      message TEXT NOT NULL, metadata TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (deployment_id) REFERENCES deployments(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS ai_chats (
+      id TEXT PRIMARY KEY, project_id TEXT, user_id TEXT NOT NULL, messages TEXT NOT NULL,
+      model TEXT DEFAULT 'ollama-default', created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS project_collaborators (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL, user_id TEXT NOT NULL,
+      role TEXT DEFAULT 'viewer', created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(project_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id);
+    CREATE INDEX IF NOT EXISTS idx_builds_project ON builds(project_id);
+    CREATE INDEX IF NOT EXISTS idx_deployments_project ON deployments(project_id);
+    CREATE INDEX IF NOT EXISTS idx_ai_chats_project ON ai_chats(project_id);
+    CREATE INDEX IF NOT EXISTS idx_collaborators_project ON project_collaborators(project_id);
+  `);
+
+  try {
+    const cols = db.pragma('table_info(users)').map(c => c.name);
+    if (!cols.includes('totp_secret')) db.exec('ALTER TABLE users ADD COLUMN totp_secret TEXT');
+    if (!cols.includes('totp_enabled')) db.exec('ALTER TABLE users ADD COLUMN totp_enabled INTEGER DEFAULT 0');
+    if (!cols.includes('recovery_codes')) db.exec('ALTER TABLE users ADD COLUMN recovery_codes TEXT');
+  } catch (e) { /* ignore */ }
+}
+
+function adaptSql(sqlStr) {
+  if (!isPostgres) {
+    return sqlStr.replace(/\$\d+/g, () => '?');
+  }
+  return sqlStr;
 }
 
 export function getPool() {
-  return firestore;
+  return pool;
 }
 
 export const userOps = {
-  create: async (id, email, passwordHash, name, provider = null, providerId = null) => {
-    await doc('users', id).set({
-      email,
-      password_hash: passwordHash || null,
-      name: name || email?.split('@')[0] || null,
-      avatar_url: null,
-      provider: provider || null,
-      provider_id: providerId || null,
-      totp_secret: null,
-      totp_enabled: false,
-      recovery_codes: null,
-      created_at: now(),
-      updated_at: now()
-    });
-  },
-  findByEmail: async (email) => {
-    const snap = await firestore.collection('users').where('email', '==', email).limit(1).get();
-    return snap.empty ? null : snapshotToDoc(snap.docs[0]);
-  },
-  findByProvider: async (provider, providerId) => {
-    const snap = await firestore.collection('users')
-      .where('provider', '==', provider)
-      .where('provider_id', '==', String(providerId))
-      .limit(1).get();
-    return snap.empty ? null : snapshotToDoc(snap.docs[0]);
-  },
-  findById: async (id) => {
-    const snap = await doc('users', id).get();
-    return snapshotToDoc(snap);
-  },
-  update: async (id, updates) => {
-    const data = { ...updates, updated_at: now() };
-    await doc('users', id).update(data);
+  create: (id, email, passwordHash, name, provider = null, providerId = null) =>
+    execute(adaptSql('INSERT INTO users (id, email, password_hash, name, provider, provider_id) VALUES ($1, $2, $3, $4, $5, $6)'), [id, email, passwordHash, name, provider, providerId]),
+  findByEmail: (email) => queryOne(adaptSql('SELECT * FROM users WHERE email = $1'), [email]),
+  findByProvider: (provider, providerId) => queryOne(adaptSql('SELECT * FROM users WHERE provider = $1 AND provider_id = $2'), [provider, providerId]),
+  findById: (id) => queryOne(adaptSql('SELECT * FROM users WHERE id = $1'), [id]),
+  update: (id, updates) => {
+    const keys = Object.keys(updates);
+    const fields = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
+    const values = [...Object.values(updates), id];
+    const dateExpr = isPostgres ? 'NOW()' : "datetime('now')";
+    return execute(adaptSql(`UPDATE users SET ${fields}, updated_at = ${dateExpr} WHERE id = $${keys.length + 1}`), values);
   }
 };
 
 export const projectOps = {
-  create: async (project) => {
-    await doc('projects', project.id).set({
-      user_id: project.userId,
-      name: project.name,
-      description: project.description || null,
-      framework: project.framework || 'vite-react',
-      path: project.path,
-      status: 'active',
-      created_at: now(),
-      updated_at: now()
-    });
+  create: (project) =>
+    execute(adaptSql('INSERT INTO projects (id, user_id, name, description, framework, path) VALUES ($1, $2, $3, $4, $5, $6)'),
+      [project.id, project.userId, project.name, project.description, project.framework, project.path]),
+  get: (id) => queryOne(adaptSql('SELECT * FROM projects WHERE id = $1'), [id]),
+  getByUser: (userId) => queryAll(adaptSql('SELECT * FROM projects WHERE user_id = $1 ORDER BY updated_at DESC'), [userId]),
+  update: (id, updates) => {
+    const keys = Object.keys(updates);
+    const fields = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
+    const values = [...Object.values(updates), id];
+    const dateExpr = isPostgres ? 'NOW()' : "datetime('now')";
+    return execute(adaptSql(`UPDATE projects SET ${fields}, updated_at = ${dateExpr} WHERE id = $${keys.length + 1}`), values);
   },
-  get: async (id) => {
-    const snap = await doc('projects', id).get();
-    return snapshotToDoc(snap);
-  },
-  getByUser: async (userId) => {
-    return queryDocs('projects',
-      [{ field: 'user_id', op: '==', value: userId }],
-      'updated_at', 'desc'
+  delete: (id) => execute(adaptSql('DELETE FROM projects WHERE id = $1'), [id]),
+  addCollaborator: (projectId, userId, role = 'editor') => {
+    if (isPostgres) {
+      return execute(
+        adaptSql(`INSERT INTO project_collaborators (id, project_id, user_id, role) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (project_id, user_id) DO UPDATE SET role = $4`),
+        [crypto.randomUUID(), projectId, userId, role]
+      );
+    }
+    return execute(
+      adaptSql('INSERT OR REPLACE INTO project_collaborators (id, project_id, user_id, role) VALUES ($1, $2, $3, $4)'),
+      [crypto.randomUUID(), projectId, userId, role]
     );
   },
-  update: async (id, updates) => {
-    const data = { ...updates, updated_at: now() };
-    await doc('projects', id).update(data);
-  },
-  delete: async (id) => {
-    await doc('projects', id).delete();
-  },
-  addCollaborator: async (projectId, userId, role = 'editor') => {
-    const collabId = `${projectId}_${userId}`;
-    await doc('project_collaborators', collabId).set({
-      project_id: projectId,
-      user_id: userId,
-      role,
-      created_at: now()
-    });
-  },
-  getCollaborators: async (projectId) => {
-    const snap = await firestore.collection('project_collaborators')
-      .where('project_id', '==', projectId).get();
-    const collabs = snap.docs.map(d => snapshotToDoc(d));
-    const enriched = await Promise.all(collabs.map(async (c) => {
-      const user = await userOps.findById(c.user_id);
-      return { ...c, email: user?.email || null, name: user?.name || null, avatar_url: user?.avatar_url || null };
-    }));
-    return enriched;
-  },
-  removeCollaborator: async (projectId, userId) => {
-    const collabId = `${projectId}_${userId}`;
-    await doc('project_collaborators', collabId).delete();
-  }
+  getCollaborators: (projectId) =>
+    queryAll(adaptSql(`SELECT pc.*, u.email, u.name, u.avatar_url
+      FROM project_collaborators pc JOIN users u ON pc.user_id = u.id WHERE pc.project_id = $1`), [projectId]),
+  removeCollaborator: (projectId, userId) =>
+    execute(adaptSql('DELETE FROM project_collaborators WHERE project_id = $1 AND user_id = $2'), [projectId, userId])
 };
 
 export const buildOps = {
-  create: async (build) => {
-    await doc('builds', build.id).set({
-      project_id: build.projectId,
-      status: build.status || 'building',
-      output_path: null,
-      error: null,
-      started_at: now(),
-      completed_at: null
-    });
+  create: (build) =>
+    execute(adaptSql('INSERT INTO builds (id, project_id, status) VALUES ($1, $2, $3)'), [build.id, build.projectId, build.status || 'building']),
+  update: (id, updates) => {
+    const keys = Object.keys(updates);
+    const fields = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
+    const values = [...Object.values(updates), id];
+    return execute(adaptSql(`UPDATE builds SET ${fields} WHERE id = $${keys.length + 1}`), values);
   },
-  update: async (id, updates) => {
-    await doc('builds', id).update({ ...updates });
-  },
-  getByProject: async (projectId) => {
-    return queryDocs('builds',
-      [{ field: 'project_id', op: '==', value: projectId }],
-      'started_at', 'desc'
-    );
-  },
-  getLatest: async (projectId) => {
-    const results = await queryDocs('builds',
-      [{ field: 'project_id', op: '==', value: projectId }],
-      'started_at', 'desc', 1
-    );
-    return results[0] || null;
-  }
+  getByProject: (projectId) => queryAll(adaptSql('SELECT * FROM builds WHERE project_id = $1 ORDER BY started_at DESC'), [projectId]),
+  getLatest: (projectId) => queryOne(adaptSql('SELECT * FROM builds WHERE project_id = $1 ORDER BY started_at DESC LIMIT 1'), [projectId])
 };
 
 export const deployOps = {
-  create: async (deployment) => {
-    await doc('deployments', deployment.id).set({
-      project_id: deployment.projectId,
-      status: deployment.status || 'deploying',
-      url: deployment.url || null,
-      config: JSON.stringify(deployment.config || {}),
-      error: null,
-      started_at: now(),
-      completed_at: null
-    });
+  create: (deployment) =>
+    execute(adaptSql('INSERT INTO deployments (id, project_id, status, url, config) VALUES ($1, $2, $3, $4, $5)'),
+      [deployment.id, deployment.projectId, deployment.status || 'deploying', deployment.url, JSON.stringify(deployment.config || {})]),
+  update: (id, updates) => {
+    const keys = Object.keys(updates);
+    const fields = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
+    const values = [...Object.values(updates), id];
+    return execute(adaptSql(`UPDATE deployments SET ${fields} WHERE id = $${keys.length + 1}`), values);
   },
-  update: async (id, updates) => {
-    await doc('deployments', id).update({ ...updates });
-  },
-  getByProject: async (projectId) => {
-    return queryDocs('deployments',
-      [{ field: 'project_id', op: '==', value: projectId }],
-      'started_at', 'desc'
-    );
-  },
-  getActive: async (projectId) => {
-    const results = await queryDocs('deployments',
-      [
-        { field: 'project_id', op: '==', value: projectId },
-        { field: 'status', op: '==', value: 'active' }
-      ],
-      'started_at', 'desc', 1
-    );
-    return results[0] || null;
-  },
-  addLog: async (deploymentId, level, message, metadata) => {
-    const logId = `${deploymentId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    await doc('deployment_logs', logId).set({
-      deployment_id: deploymentId,
-      level,
-      message,
-      metadata: JSON.stringify(metadata || {}),
-      created_at: now()
-    });
-  },
-  getLogs: async (deploymentId, limit = 100) => {
-    return queryDocs('deployment_logs',
-      [{ field: 'deployment_id', op: '==', value: deploymentId }],
-      'created_at', 'desc', limit
-    );
-  }
+  getByProject: (projectId) => queryAll(adaptSql('SELECT * FROM deployments WHERE project_id = $1 ORDER BY started_at DESC'), [projectId]),
+  getActive: (projectId) =>
+    queryOne(adaptSql('SELECT * FROM deployments WHERE project_id = $1 AND status = $2 ORDER BY started_at DESC LIMIT 1'), [projectId, 'active']),
+  addLog: (deploymentId, level, message, metadata) =>
+    execute(adaptSql('INSERT INTO deployment_logs (deployment_id, level, message, metadata) VALUES ($1, $2, $3, $4)'),
+      [deploymentId, level, message, JSON.stringify(metadata || {})]),
+  getLogs: (deploymentId, limit = 100) =>
+    queryAll(adaptSql('SELECT * FROM deployment_logs WHERE deployment_id = $1 ORDER BY created_at DESC LIMIT $2'), [deploymentId, limit])
 };
 
 export const chatOps = {
-  save: async (chat) => {
-    await doc('ai_chats', chat.id).set({
-      project_id: chat.projectId || null,
-      user_id: chat.userId,
-      messages: JSON.stringify(chat.messages),
-      model: chat.model || 'ollama-default',
-      created_at: now()
-    });
-  },
-  getByProject: async (projectId, limit = 50) => {
-    return queryDocs('ai_chats',
-      [{ field: 'project_id', op: '==', value: projectId }],
-      'created_at', 'desc', limit
-    );
-  },
-  getByUser: async (userId, limit = 50) => {
-    return queryDocs('ai_chats',
-      [{ field: 'user_id', op: '==', value: userId }],
-      'created_at', 'desc', limit
-    );
-  }
+  save: (chat) =>
+    execute(adaptSql('INSERT INTO ai_chats (id, project_id, user_id, messages, model) VALUES ($1, $2, $3, $4, $5)'),
+      [chat.id, chat.projectId, chat.userId, JSON.stringify(chat.messages), chat.model || 'ollama-default']),
+  getByProject: (projectId, limit = 50) =>
+    queryAll(adaptSql('SELECT * FROM ai_chats WHERE project_id = $1 ORDER BY created_at DESC LIMIT $2'), [projectId, limit]),
+  getByUser: (userId, limit = 50) =>
+    queryAll(adaptSql('SELECT * FROM ai_chats WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2'), [userId, limit])
 };
 
 export default {
