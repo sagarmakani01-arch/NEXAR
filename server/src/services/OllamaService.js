@@ -10,9 +10,12 @@ class OllamaService {
     return this.config.getModelConfig(modelId);
   }
 
-  async fetchStream(baseURL, apiKey, body) {
+  async fetchStream(baseURL, apiKey, body, timeoutMs) {
     const url = baseURL.replace(/\/+$/, '') + '/chat/completions';
+    const controller = new AbortController();
+    if (timeoutMs) setTimeout(() => controller.abort(), timeoutMs);
     const resp = await fetch(url, {
+      signal: controller.signal,
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -55,6 +58,7 @@ class OllamaService {
     const modelId = options.modelId || 'ollama-default';
     const cfg = this.getConfig(modelId);
     const systemPrompt = options.systemPrompt || this.config.systemPrompts.codeGeneration;
+    const { timeout, ...apiParams } = options.params || {};
 
     const messages = [
       { role: 'system', content: systemPrompt },
@@ -67,10 +71,10 @@ class OllamaService {
       messages,
       stream: true,
       ...cfg.defaultParams,
-      ...options.params,
+      ...apiParams,
     };
 
-    const resp = await this.fetchStream(cfg.baseURL, cfg.apiKey, body);
+    const resp = await this.fetchStream(cfg.baseURL, cfg.apiKey, body, timeout);
     yield* this.streamSSE(resp);
   }
 
@@ -125,16 +129,18 @@ Format each file as:
 ===ENDFILE===
 `;
 
+    const { timeout: _timeout, ...restParams } = options.params || {};
     yield* this.generateCode(prompt, {}, {
       systemPrompt: this.config.systemPrompts.fullStack,
       modelId: options.modelId,
-      params: { ...options.params, max_tokens: options.params?.max_tokens || 4096 }
+      params: { ...restParams, max_tokens: restParams?.max_tokens || 4096 }
     });
   }
 
   async *chat(messages, options = {}) {
     const modelId = options.modelId || 'ollama-default';
     let cfg = this.getConfig(modelId);
+    const { timeout, ...apiParams } = options.params || {};
     let attempt = 0;
     const maxAttempts = 2;
 
@@ -151,10 +157,10 @@ Format each file as:
           messages: fullMessages,
           stream: true,
           ...cfg.defaultParams,
-          ...options.params,
+          ...apiParams,
         };
 
-        const resp = await this.fetchStream(cfg.baseURL, cfg.apiKey, body);
+        const resp = await this.fetchStream(cfg.baseURL, cfg.apiKey, body, timeout);
         yield* this.streamSSE(resp);
         return;
       } catch (error) {
