@@ -14,10 +14,11 @@ class WebSocketService {
     this.socket = io(wsUrl, {
       auth: { token },
       transports: ['websocket', 'polling'],
+      timeout: 60000,
       reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000
+      reconnectionAttempts: 20,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 10000
     });
 
     this.socket.on('connect', () => {
