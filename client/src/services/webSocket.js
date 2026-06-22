@@ -9,7 +9,7 @@ class WebSocketService {
   connect(token) {
     if (this.socket?.connected) return;
 
-    const wsUrl = import.meta.env.VITE_WS_URL || '';
+    const wsUrl = import.meta.env.VITE_WS_URL || 'wss://nexar-api-1f4j.onrender.com';
     
     this.socket = io(wsUrl, {
       auth: { token },
