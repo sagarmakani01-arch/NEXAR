@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './store/authStore.js';
 import { useProjectStore } from './store/projectStore.js';  // Fixed: useProjectStore (capital P)
 import MainLayout from './components/Layout/MainLayout';
@@ -22,9 +22,16 @@ function ProtectedRoute({ children }) {
 
 function PublicRoute({ children }) {
   const { isAuthenticated } = useAuthStore();
+  const location = useLocation();
   
   if (isAuthenticated) {
     return <Navigate to="/app" replace />;
+  }
+
+  // Login/signup pages: redirect to landing on refresh (no router state)
+  // Only allow access via internal navigation (e.g., clicking "Get Started")
+  if (location.pathname === '/login' && !location.state?.from) {
+    return <Navigate to="/" replace />;
   }
 
   return children;

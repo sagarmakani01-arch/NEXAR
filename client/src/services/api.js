@@ -41,7 +41,9 @@ export const authAPI = {
   twoFASetup: () => api.post('/auth/2fa/setup'),
   twoFAVerify: (token) => api.post('/auth/2fa/verify', { token }),
   twoFADisable: (token) => api.post('/auth/2fa/disable', { token }),
-  twoFAStatus: () => api.get('/auth/2fa/status')
+  twoFAStatus: () => api.get('/auth/2fa/status'),
+  twoFAGitHubEnable: () => api.post('/auth/2fa/github/enable'),
+  twoFAGitHubDisable: () => api.post('/auth/2fa/github/disable')
 };
 
 export const projectAPI = {

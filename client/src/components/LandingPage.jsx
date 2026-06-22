@@ -14,37 +14,107 @@ export default function LandingPage() {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+
+    const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
+    resize();
+    window.addEventListener('resize', resize);
 
     let animationId;
-    const particles = Array.from({ length: 40 }, () => ({
+    const SPHERE_RADIUS = 170;
+    const CONNECTION_DIST_SQ = 220 * 220;
+
+    // Fibonacci sphere points
+    const N = 90;
+    const pts = [];
+    const phi = Math.PI * (3 - Math.sqrt(5));
+    for (let i = 0; i < N; i++) {
+      const y = 1 - (i / (N - 1)) * 2;
+      const r = Math.sqrt(1 - y * y) * SPHERE_RADIUS;
+      const theta = phi * i;
+      pts.push({ x: Math.cos(theta) * r, y: y * SPHERE_RADIUS, z: Math.sin(theta) * r });
+    }
+
+    // Floating code characters
+    const chars = '01{}[]<>/\\|+-*=&#%';
+    const floaters = Array.from({ length: 25 }, () => ({
       x: Math.random() * canvas.width,
       y: Math.random() * canvas.height,
-      vx: (Math.random() - 0.5) * 0.3,
-      vy: (Math.random() - 0.5) * 0.3,
-      r: Math.random() * 2 + 0.5,
-      opacity: Math.random() * 0.4 + 0.1
+      v: 0.15 + Math.random() * 0.35,
+      c: chars[Math.floor(Math.random() * chars.length)],
+      a: 0.06 + Math.random() * 0.2,
+      s: 7 + Math.random() * 5,
+      phase: Math.random() * Math.PI * 2,
     }));
+
+    let rot = 0;
+
+    const project = (x, y, z, ay, ax) => {
+      const cosY = Math.cos(ay), sinY = Math.sin(ay);
+      const x1 = x * cosY - z * sinY, z1 = x * sinY + z * cosY, y1 = y;
+      const cosX = Math.cos(ax), sinX = Math.sin(ax);
+      const y2 = y1 * cosX - z1 * sinX, z2 = y1 * sinX + z1 * cosX;
+      const fov = 600;
+      const s = fov / (fov + z2);
+      return { x: x1 * s + canvas.width / 2, y: y2 * s + canvas.height / 2, z: z2, s };
+    };
 
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      particles.forEach((p) => {
-        p.x += p.vx;
-        p.y += p.vy;
-        if (p.x > canvas.width) p.x = 0;
-        if (p.x < 0) p.x = canvas.width;
-        if (p.y > canvas.height) p.y = 0;
-        if (p.y < 0) p.y = canvas.height;
+      rot += 0.004;
+      const ay = rot, ax = rot * 0.25;
+
+      const proj = pts.map(p => ({ ...project(p.x, p.y, p.z, ay, ax), oz: p.z }));
+      proj.sort((a, b) => a.z - b.z);
+
+      // Connections
+      for (let i = 0; i < proj.length; i++) {
+        for (let j = i + 1; j < proj.length; j++) {
+          const dx = proj[i].x - proj[j].x, dy = proj[i].y - proj[j].y;
+          if (dx * dx + dy * dy > CONNECTION_DIST_SQ) continue;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          const alpha = Math.max(0, 1 - d / 220) * 0.15;
+          ctx.strokeStyle = `rgba(56, 189, 248, ${alpha})`;
+          ctx.lineWidth = 0.5;
+          ctx.beginPath();
+          ctx.moveTo(proj[i].x, proj[i].y);
+          ctx.lineTo(proj[j].x, proj[j].y);
+          ctx.stroke();
+        }
+      }
+
+      // Nodes with glow
+      for (const p of proj) {
+        const alpha = Math.max(0.2, Math.min(0.9, (p.z + 250) / 500));
+        const r = p.s * 2;
+
+        const grd = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 5);
+        grd.addColorStop(0, `rgba(56, 189, 248, ${alpha * 0.35})`);
+        grd.addColorStop(1, 'rgba(56, 189, 248, 0)');
+        ctx.fillStyle = grd;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(56, 189, 248, ${p.opacity})`;
+        ctx.arc(p.x, p.y, r * 5, 0, Math.PI * 2);
         ctx.fill();
-      });
+
+        ctx.fillStyle = `rgba(56, 189, 248, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Floating code characters
+      for (const f of floaters) {
+        f.y -= f.v;
+        f.x += Math.sin(Date.now() * 0.001 + f.phase) * 0.15;
+        if (f.y < -20) { f.y = canvas.height + 20; f.x = Math.random() * canvas.width; }
+        ctx.fillStyle = `rgba(56, 189, 248, ${f.a})`;
+        ctx.font = `${f.s}px "Courier New", monospace`;
+        ctx.fillText(f.c, f.x, f.y);
+      }
+
       animationId = requestAnimationFrame(animate);
     };
     animate();
-    return () => cancelAnimationFrame(animationId);
+    return () => { cancelAnimationFrame(animationId); window.removeEventListener('resize', resize); };
   }, []);
 
   const problems = [
@@ -150,7 +220,7 @@ export default function LandingPage() {
           </div>
 
           <button
-            onClick={() => navigate('/login')}
+            onClick={() => navigate('/login', { state: { from: 'landing' } })}
             className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 rounded-xl text-sm font-semibold transition-all duration-300 shadow-lg hover:shadow-blue-600/40 hover:shadow-xl active:scale-[0.98]"
           >
             Get Started
@@ -198,7 +268,7 @@ export default function LandingPage() {
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button
-              onClick={() => navigate('/login')}
+              onClick={() => navigate('/login', { state: { from: 'landing' } })}
               className="group px-8 py-4 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 rounded-xl font-semibold text-base flex items-center justify-center gap-2 transition-all duration-300 shadow-xl hover:shadow-blue-600/30 active:scale-[0.98]"
             >
               Start Building Free
@@ -383,7 +453,7 @@ export default function LandingPage() {
                 No credit card. No data collection. No limits. Start building with the only AI development platform that puts you in full control.
               </p>
               <button
-                onClick={() => navigate('/login')}
+                onClick={() => navigate('/login', { state: { from: 'landing' } })}
                 className="group px-10 py-4 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 rounded-xl font-semibold text-base inline-flex items-center gap-2 transition-all duration-300 shadow-xl hover:shadow-blue-600/30 active:scale-[0.98]"
               >
                 Start Building Free

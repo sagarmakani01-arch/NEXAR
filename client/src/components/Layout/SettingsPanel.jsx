@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   User, Palette, Type, Terminal, Save, Shield, 
   Bell, Moon, Sun, Monitor, Code2, Globe, Key,
@@ -17,6 +18,7 @@ const THEMES = [
 const FONT_SIZES = [11, 12, 13, 14, 15, 16, 18, 20, 22, 24];
 
 export default function SettingsPanel() {
+  const navigate = useNavigate();
   const { 
     user, 
     updateProfile, 
@@ -47,7 +49,13 @@ export default function SettingsPanel() {
   const [profileForm, setProfileForm] = useState({ name: user?.name || '', email: user?.email || '' });
   const [passwordForm, setPasswordForm] = useState({ current: '', new: '', confirm: '' });
   const [saving, setSaving] = useState(false);
-  const [twoFA, setTwoFA] = useState({ enabled: false, loading: false, qrCode: null, secret: null, code: '', recoveryCodes: null, step: 'idle' });
+  const [twoFA, setTwoFA] = useState({ enabled: false, githubEnabled: false, loading: false, qrCode: null, secret: null, code: '', recoveryCodes: null, step: 'idle' });
+
+  useEffect(() => {
+    authAPI.twoFAStatus().then(({ data }) => {
+      setTwoFA(s => ({ ...s, enabled: data.totp_enabled, githubEnabled: data.github_2fa_enabled }));
+    }).catch(() => {});
+  }, []);
 
   const sections = [
     { id: 'editor', label: 'Editor', icon: Code2 },
@@ -92,6 +100,7 @@ export default function SettingsPanel() {
 
   const handleLogout = () => {
     logout();
+    navigate('/');
     addNotification({ type: 'success', title: 'Logged out' });
   };
 
@@ -407,110 +416,167 @@ export default function SettingsPanel() {
             {/* Two-Factor Authentication */}
             <div className="bg-gray-50 dark:bg-dark-tertiary/50 rounded-lg p-4">
               <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-4">Two-Factor Authentication</h3>
-              {twoFA.step === 'idle' && (
-                <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                    Add an extra layer of security by requiring a verification code from your authenticator app.
-                  </p>
-                  <button
-                    onClick={async () => {
-                      setTwoFA(s => ({ ...s, loading: true }));
-                      try {
-                        const { data } = await authAPI.twoFASetup();
-                        setTwoFA(s => ({ ...s, loading: false, qrCode: data.qrCode, secret: data.secret, step: 'setup' }));
-                        // Check current status
-                        const statusRes = await authAPI.twoFAStatus();
-                        setTwoFA(s => ({ ...s, enabled: statusRes.data.enabled }));
-                      } catch (err) {
-                        setTwoFA(s => ({ ...s, loading: false }));
-                        addNotification({ type: 'error', title: 'Failed', message: err.response?.data?.error || 'Could not setup 2FA' });
-                      }
-                    }}
-                    disabled={twoFA.loading}
-                    className="btn-primary"
-                  >
-                    {twoFA.loading ? 'Setting up...' : (twoFA.enabled ? 'Reconfigure' : 'Enable 2FA')}
-                  </button>
-                  {twoFA.enabled && (
-                    <button
-                      onClick={async () => {
-                        setTwoFA(s => ({ ...s, loading: true }));
-                        try {
-                          await authAPI.twoFADisable('');
-                          setTwoFA(s => ({ ...s, enabled: false, loading: false }));
-                          addNotification({ type: 'success', title: '2FA Disabled' });
-                        } catch (err) {
-                          setTwoFA(s => ({ ...s, loading: false }));
-                          addNotification({ type: 'error', title: 'Failed', message: err.response?.data?.error || 'Could not disable 2FA' });
-                        }
-                      }}
-                      disabled={twoFA.loading}
-                      className="btn-danger ml-2"
-                    >
-                      Disable 2FA
-                    </button>
-                  )}
-                </div>
-              )}
-              {twoFA.step === 'setup' && (
-                <div className="space-y-4">
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.):
-                  </p>
-                  {twoFA.qrCode && <img src={twoFA.qrCode} alt="2FA QR Code" className="mx-auto w-48 h-48" />}
-                  {twoFA.secret && (
-                    <div className="text-center">
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Or enter this key manually:</p>
-                      <code className="text-sm font-mono bg-white dark:bg-dark-bg px-3 py-2 rounded border border-gray-200 dark:border-dark-border select-all">{twoFA.secret}</code>
+              <div className="space-y-4">
+                {/* TOTP Method */}
+                <div className="p-3 bg-white dark:bg-dark-bg rounded-lg border border-gray-200 dark:border-dark-border">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <p className="font-medium text-sm">Authenticator App (TOTP)</p>
+                      <p className="text-xs text-gray-500">Google Authenticator, Authy, etc.</p>
                     </div>
-                  )}
-                  <div>
-                    <label className="label">Verification Code</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={twoFA.code}
-                        onChange={(e) => setTwoFA(s => ({ ...s, code: e.target.value }))}
-                        placeholder="000000"
-                        className="input text-center text-lg tracking-widest font-mono flex-1"
-                        maxLength={6}
-                      />
+                    <span className={`badge ${twoFA.enabled ? 'badge-success' : 'badge-default'}`}>{twoFA.enabled ? 'Enabled' : 'Disabled'}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    {twoFA.step === 'idle' && !twoFA.enabled && (
                       <button
                         onClick={async () => {
-                          if (twoFA.code.length < 6) return;
                           setTwoFA(s => ({ ...s, loading: true }));
                           try {
-                            const { data } = await authAPI.twoFAVerify(twoFA.code);
-                            setTwoFA(s => ({ ...s, enabled: true, loading: false, recoveryCodes: data.recoveryCodes, step: 'done' }));
-                            addNotification({ type: 'success', title: '2FA Enabled' });
+                            const { data } = await authAPI.twoFASetup();
+                            setTwoFA(s => ({ ...s, loading: false, qrCode: data.qrCode, secret: data.secret, step: 'setup' }));
                           } catch (err) {
                             setTwoFA(s => ({ ...s, loading: false }));
-                            addNotification({ type: 'error', title: 'Invalid Code', message: err.response?.data?.error || 'Verification failed' });
+                            addNotification({ type: 'error', title: 'Failed', message: err.response?.data?.error || 'Could not setup 2FA' });
                           }
                         }}
-                        disabled={twoFA.loading || twoFA.code.length < 6}
-                        className="btn-primary"
+                        disabled={twoFA.loading}
+                        className="btn-primary text-sm py-1.5 px-3"
                       >
-                        {twoFA.loading ? '...' : 'Verify'}
+                        Setup
                       </button>
+                    )}
+                    {twoFA.enabled && (
+                      <button
+                        onClick={async () => {
+                          setTwoFA(s => ({ ...s, loading: true }));
+                          try {
+                            await authAPI.twoFADisable('');
+                            setTwoFA(s => ({ ...s, enabled: false, loading: false }));
+                            addNotification({ type: 'success', title: 'TOTP 2FA Disabled' });
+                          } catch (err) {
+                            setTwoFA(s => ({ ...s, loading: false }));
+                            addNotification({ type: 'error', title: 'Failed', message: err.response?.data?.error || 'Could not disable' });
+                          }
+                        }}
+                        disabled={twoFA.loading}
+                        className="btn-danger text-sm py-1.5 px-3"
+                      >
+                        Disable
+                      </button>
+                    )}
+                  </div>
+                  {twoFA.step === 'setup' && (
+                    <div className="mt-4 space-y-4">
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        Scan this QR code with your authenticator app:
+                      </p>
+                      {twoFA.qrCode && <img src={twoFA.qrCode} alt="2FA QR Code" className="mx-auto w-48 h-48" />}
+                      {twoFA.secret && (
+                        <div className="text-center">
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Or enter manually:</p>
+                          <code className="text-sm font-mono bg-white dark:bg-dark-bg px-3 py-2 rounded border border-gray-200 dark:border-dark-border select-all">{twoFA.secret}</code>
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={twoFA.code}
+                          onChange={(e) => setTwoFA(s => ({ ...s, code: e.target.value }))}
+                          placeholder="000000"
+                          className="input text-center text-lg tracking-widest font-mono flex-1"
+                          maxLength={6}
+                        />
+                        <button
+                          onClick={async () => {
+                            if (twoFA.code.length < 6) return;
+                            setTwoFA(s => ({ ...s, loading: true }));
+                            try {
+                              const { data } = await authAPI.twoFAVerify(twoFA.code);
+                              setTwoFA(s => ({ ...s, enabled: true, loading: false, recoveryCodes: data.recoveryCodes, step: 'done' }));
+                              addNotification({ type: 'success', title: 'TOTP 2FA Enabled' });
+                            } catch (err) {
+                              setTwoFA(s => ({ ...s, loading: false }));
+                              addNotification({ type: 'error', title: 'Invalid Code', message: err.response?.data?.error || 'Verification failed' });
+                            }
+                          }}
+                          disabled={twoFA.loading || twoFA.code.length < 6}
+                          className="btn-primary"
+                        >
+                          {twoFA.loading ? '...' : 'Verify'}
+                        </button>
+                      </div>
                     </div>
+                  )}
+                  {twoFA.step === 'done' && twoFA.recoveryCodes && (
+                    <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                      <p className="text-sm font-medium text-yellow-800 dark:text-yellow-300 mb-2">Save these recovery codes!</p>
+                      <p className="text-xs text-yellow-700 dark:text-yellow-400 mb-3">Each code can be used once if you lose access.</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {twoFA.recoveryCodes.map((code, i) => (
+                          <code key={i} className="text-xs font-mono bg-white dark:bg-dark-bg px-2 py-1 rounded border border-yellow-300 dark:border-yellow-700">{code}</code>
+                        ))}
+                      </div>
+                      <button onClick={() => setTwoFA({ enabled: true, loading: false, qrCode: null, secret: null, code: '', recoveryCodes: null, step: 'idle' })} className="btn-primary mt-3 text-sm py-1.5 px-3">Done</button>
+                    </div>
+                  )}
+                </div>
+
+                {/* GitHub 2FA Method */}
+                <div className="p-3 bg-white dark:bg-dark-bg rounded-lg border border-gray-200 dark:border-dark-border">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <p className="font-medium text-sm">GitHub 2FA</p>
+                      <p className="text-xs text-gray-500">Verify with your GitHub account</p>
+                    </div>
+                    <span className={`badge ${twoFA.githubEnabled ? 'badge-success' : 'badge-default'}`}>{twoFA.githubEnabled ? 'Enabled' : 'Disabled'}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    {!twoFA.githubEnabled && (
+                      <button
+                        onClick={async () => {
+                          setTwoFA(s => ({ ...s, loading: true }));
+                          try {
+                            const { data } = await authAPI.twoFAGitHubEnable();
+                            if (data.needLink) {
+                              window.location.href = data.redirectUrl;
+                            } else {
+                              setTwoFA(s => ({ ...s, githubEnabled: true, loading: false }));
+                              addNotification({ type: 'success', title: 'GitHub 2FA Enabled' });
+                            }
+                          } catch (err) {
+                            setTwoFA(s => ({ ...s, loading: false }));
+                            addNotification({ type: 'error', title: 'Failed', message: err.response?.data?.error || 'Could not enable' });
+                          }
+                        }}
+                        disabled={twoFA.loading}
+                        className="btn-primary text-sm py-1.5 px-3 flex items-center gap-1"
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                        Enable
+                      </button>
+                    )}
+                    {twoFA.githubEnabled && (
+                      <button
+                        onClick={async () => {
+                          setTwoFA(s => ({ ...s, loading: true }));
+                          try {
+                            await authAPI.twoFAGitHubDisable();
+                            setTwoFA(s => ({ ...s, githubEnabled: false, loading: false }));
+                            addNotification({ type: 'success', title: 'GitHub 2FA Disabled' });
+                          } catch (err) {
+                            setTwoFA(s => ({ ...s, loading: false }));
+                            addNotification({ type: 'error', title: 'Failed', message: err.response?.data?.error || 'Could not disable' });
+                          }
+                        }}
+                        disabled={twoFA.loading}
+                        className="btn-danger text-sm py-1.5 px-3"
+                      >
+                        Disable
+                      </button>
+                    )}
                   </div>
                 </div>
-              )}
-              {twoFA.step === 'done' && twoFA.recoveryCodes && (
-                <div className="space-y-4">
-                  <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                    <p className="text-sm font-medium text-yellow-800 dark:text-yellow-300 mb-2">Save these recovery codes!</p>
-                    <p className="text-xs text-yellow-700 dark:text-yellow-400 mb-3">Each code can be used once if you lose access to your authenticator app.</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {twoFA.recoveryCodes.map((code, i) => (
-                        <code key={i} className="text-xs font-mono bg-white dark:bg-dark-bg px-2 py-1 rounded border border-yellow-300 dark:border-yellow-700">{code}</code>
-                      ))}
-                    </div>
-                  </div>
-                  <button onClick={() => setTwoFA({ enabled: true, loading: false, qrCode: null, secret: null, code: '', recoveryCodes: null, step: 'idle' })} className="btn-primary">Done</button>
-                </div>
-              )}
+              </div>
             </div>
 
             <div className="bg-gray-50 dark:bg-dark-tertiary/50 rounded-lg p-4">

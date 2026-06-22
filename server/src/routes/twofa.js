@@ -84,9 +84,49 @@ router.post('/disable', authenticate, async (req, res) => {
 router.get('/status', authenticate, async (req, res) => {
   try {
     const user = await userOps.findById(req.userId);
-    res.json({ enabled: user?.totp_enabled || false });
+    res.json({
+      totp_enabled: !!user?.totp_enabled,
+      github_2fa_enabled: !!user?.github_2fa_enabled,
+      github_2fa_id: user?.github_2fa_id || null
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to get 2FA status' });
+  }
+});
+
+// Enable GitHub 2FA (links current user's GitHub account as 2FA)
+router.post('/github/enable', authenticate, async (req, res) => {
+  try {
+    const user = await userOps.findById(req.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.github_2fa_enabled) return res.status(400).json({ error: 'GitHub 2FA already enabled' });
+    if (user.totp_enabled) return res.status(400).json({ error: 'Disable TOTP 2FA first' });
+
+    if (!user.github_2fa_id && (!user.provider || user.provider !== 'github')) {
+      return res.json({ needLink: true, redirectUrl: `/api/auth/oauth/github?mode=link&userId=${user.id}` });
+    }
+
+    const githubId = user.github_2fa_id || user.provider_id;
+    await userOps.update(req.userId, { github_2fa_enabled: true, github_2fa_id: githubId, totp_secret: null, totp_enabled: false, recovery_codes: null });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('GitHub 2FA enable error:', error);
+    res.status(500).json({ error: 'Failed to enable GitHub 2FA' });
+  }
+});
+
+// Disable GitHub 2FA
+router.post('/github/disable', authenticate, async (req, res) => {
+  try {
+    const user = await userOps.findById(req.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!user.github_2fa_enabled) return res.status(400).json({ error: 'GitHub 2FA not enabled' });
+
+    await userOps.update(req.userId, { github_2fa_enabled: false });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('GitHub 2FA disable error:', error);
+    res.status(500).json({ error: 'Failed to disable GitHub 2FA' });
   }
 });
 

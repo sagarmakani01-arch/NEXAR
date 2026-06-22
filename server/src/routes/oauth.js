@@ -19,24 +19,29 @@ router.get('/github', (req, res) => {
   if (!GITHUB_CLIENT_ID) {
     return res.redirect(`${CLIENT_URL}/login?error=oauth_not_configured`);
   }
+  const { mode, userId } = req.query;
   const baseUrl = getBaseUrl(req);
   const redirectUri = `${baseUrl}/api/auth/oauth/github/callback`;
+  const state = JSON.stringify({ returnUrl: CLIENT_URL, mode: mode || 'login', userId: userId || '' });
   const url =
     'https://github.com/login/oauth/authorize?' +
     `client_id=${GITHUB_CLIENT_ID}&` +
     `redirect_uri=${encodeURIComponent(redirectUri)}&` +
     `scope=${encodeURIComponent('read:user user:email')}&` +
-    `state=${encodeURIComponent(CLIENT_URL)}`;
+    `state=${encodeURIComponent(state)}`;
   res.redirect(url);
 });
 
 // GitHub OAuth callback
 router.get('/github/callback', async (req, res) => {
   try {
-    const { code, state } = req.query;
+    const { code, state: rawState } = req.query;
     if (!code) {
       return res.redirect(`${CLIENT_URL}/login?error=no_code`);
     }
+
+    let stateData = { returnUrl: CLIENT_URL, mode: 'login', userId: '' };
+    try { stateData = JSON.parse(rawState); } catch { stateData.returnUrl = rawState || CLIENT_URL; }
 
     const baseUrl = getBaseUrl(req);
     const redirectUri = `${baseUrl}/api/auth/oauth/github/callback`;
@@ -56,12 +61,12 @@ router.get('/github/callback', async (req, res) => {
     });
 
     if (!tokenResp.ok) {
-      return res.redirect(`${CLIENT_URL}/login?error=token_exchange_failed`);
+      return res.redirect(`${stateData.returnUrl}/login?error=token_exchange_failed`);
     }
 
     const tokenData = await tokenResp.json();
     if (tokenData.error) {
-      return res.redirect(`${CLIENT_URL}/login?error=${tokenData.error}`);
+      return res.redirect(`${stateData.returnUrl}/login?error=${tokenData.error}`);
     }
 
     const userResp = await fetch('https://api.github.com/user', {
@@ -69,11 +74,24 @@ router.get('/github/callback', async (req, res) => {
     });
 
     if (!userResp.ok) {
-      return res.redirect(`${CLIENT_URL}/login?error=userinfo_failed`);
+      return res.redirect(`${stateData.returnUrl}/login?error=userinfo_failed`);
     }
 
     const profile = await userResp.json();
+    const githubId = String(profile.id);
 
+    // === 2FA Mode ===
+    if (stateData.mode === '2fa') {
+      const user = await userOps.findById(stateData.userId);
+      if (!user) return res.redirect(`${stateData.returnUrl}/login?error=2fa_user_not_found`);
+      if (!user.github_2fa_enabled) return res.redirect(`${stateData.returnUrl}/login?error=2fa_not_enabled`);
+      if (user.github_2fa_id !== githubId) return res.redirect(`${stateData.returnUrl}/login?error=2fa_github_mismatch`);
+
+      const token = generateToken(user);
+      return res.redirect(`${stateData.returnUrl}/login?token=${token}`);
+    }
+
+    // === Normal Login / Link Mode ===
     let email = profile.email;
     if (!email) {
       const emailsResp = await fetch('https://api.github.com/user/emails', {
@@ -82,19 +100,19 @@ router.get('/github/callback', async (req, res) => {
       if (emailsResp.ok) {
         const emails = await emailsResp.json();
         const primary = emails.find(e => e.primary && e.verified);
-        email = primary ? primary.email : (emails[0]?.email || `gh-${profile.id}@github.oauth`);
+        email = primary ? primary.email : (emails[0]?.email || `gh-${githubId}@github.oauth`);
       }
     }
 
-    let user = await userOps.findByProvider('github', String(profile.id));
+    let user = await userOps.findByProvider('github', githubId);
 
     if (!user) {
       user = await userOps.findByEmail(email);
       if (user) {
-        await userOps.update(user.id, { provider: 'github', provider_id: String(profile.id), avatar_url: profile.avatar_url });
+        await userOps.update(user.id, { provider: 'github', provider_id: githubId, avatar_url: profile.avatar_url });
       } else {
         const userId = uuidv4();
-        await userOps.create(userId, email, null, profile.login || email.split('@')[0], 'github', String(profile.id));
+        await userOps.create(userId, email, null, profile.login || email.split('@')[0], 'github', githubId);
         user = await userOps.findById(userId);
       }
     } else {
@@ -102,8 +120,7 @@ router.get('/github/callback', async (req, res) => {
     }
 
     const token = generateToken(user);
-    const returnUrl = state || CLIENT_URL;
-    res.redirect(`${returnUrl}/login?token=${token}`);
+    res.redirect(`${stateData.returnUrl}/login?token=${token}`);
   } catch (error) {
     console.error('GitHub OAuth error:', error);
     res.redirect(`${CLIENT_URL}/login?error=oauth_failed`);

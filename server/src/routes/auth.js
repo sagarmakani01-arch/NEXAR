@@ -65,7 +65,10 @@ router.post('/login', async (req, res) => {
     }
 
     if (user.totp_enabled) {
-      return res.json({ require2fa: true, userId: user.id });
+      return res.json({ require2fa: true, method: 'totp', userId: user.id });
+    }
+    if (user.github_2fa_enabled) {
+      return res.json({ require2fa: true, method: 'github', userId: user.id });
     }
 
     const token = generateToken(user);
@@ -111,7 +114,16 @@ router.put('/profile', authenticate, async (req, res) => {
     }
     
     const user = await userOps.findById(req.userId);
-    res.json({ user: { id: user.id, email: user.email, name: user.name, avatar_url: user.avatar_url } });
+  res.json({
+    user: {
+      id: user.id, email: user.email, name: user.name, avatar_url: user.avatar_url,
+      totp_enabled: !!user.totp_enabled,
+      github_2fa_enabled: !!user.github_2fa_enabled,
+      github_2fa_id: user.github_2fa_id || null,
+      provider: user.provider || null,
+      provider_id: user.provider_id || null
+    }
+  });
   } catch (error) {
     console.error('Profile update error:', error);
     res.status(500).json({ error: 'Update failed' });

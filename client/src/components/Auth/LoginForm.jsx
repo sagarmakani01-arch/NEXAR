@@ -16,6 +16,7 @@ export default function LoginForm() {
   const [oauthLoading, setOauthLoading] = useState('');
   const [twoFactorStep, setTwoFactorStep] = useState(false);
   const [twoFactorUserId, setTwoFactorUserId] = useState(null);
+  const [twoFactorMethod, setTwoFactorMethod] = useState('totp');
   const [twoFactorCode, setTwoFactorCode] = useState('');
 
   useEffect(() => {
@@ -68,6 +69,7 @@ export default function LoginForm() {
         if (data.require2fa) {
           setTwoFactorStep(true);
           setTwoFactorUserId(data.userId);
+          setTwoFactorMethod(data.method || 'totp');
           setTwoFactorCode('');
         } else {
           await login(form.email, form.password);
@@ -143,50 +145,84 @@ export default function LoginForm() {
           </div>
 
           {twoFactorStep ? (
-            <form onSubmit={handleTwoFactorSubmit} className="space-y-5">
-              <div className="text-center mb-4">
-                <Shield className="w-12 h-12 mx-auto mb-3 text-primary-600 dark:text-primary-400" />
-                <h2 className="text-lg font-bold">Two-Factor Authentication</h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  Enter the code from your authenticator app
-                </p>
-              </div>
-
-              <div>
-                <label className="label">Verification Code</label>
-                <input
-                  type="text"
-                  value={twoFactorCode}
-                  onChange={(e) => { setTwoFactorCode(e.target.value); setErrors({}); }}
-                  placeholder="000000"
-                  className="input text-center text-2xl tracking-[0.5em] font-mono"
-                  maxLength={6}
-                  autoFocus
-                />
-              </div>
-
-              {errors.form && (
-                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 text-sm">
-                  {errors.form}
+            twoFactorMethod === 'github' ? (
+              <div className="space-y-5">
+                <div className="text-center mb-4">
+                  <Shield className="w-12 h-12 mx-auto mb-3 text-primary-600 dark:text-primary-400" />
+                  <h2 className="text-lg font-bold">Two-Factor Authentication</h2>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                    Verify your identity with GitHub
+                  </p>
                 </div>
-              )}
 
-              <button
-                type="submit"
-                disabled={loading || twoFactorCode.length < 6}
-                className="btn-primary w-full py-3 text-lg"
-              >
-                {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Verify'}
-              </button>
+                {errors.form && (
+                  <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 text-sm">
+                    {errors.form}
+                  </div>
+                )}
 
-              <button
-                type="button"
-                onClick={() => { setTwoFactorStep(false); setTwoFactorUserId(null); setTwoFactorCode(''); setErrors({}); }}
-                className="w-full text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-              >
-                Back to sign in
-              </button>
-            </form>
+                <button
+                  onClick={() => { window.location.href = `/api/auth/oauth/github?mode=2fa&userId=${twoFactorUserId}`; }}
+                  className="btn-primary w-full py-3 text-lg flex items-center justify-center gap-2"
+                >
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                  Verify with GitHub
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setTwoFactorStep(false); setTwoFactorUserId(null); setTwoFactorCode(''); setErrors({}); }}
+                  className="w-full text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+                >
+                  Back to sign in
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleTwoFactorSubmit} className="space-y-5">
+                <div className="text-center mb-4">
+                  <Shield className="w-12 h-12 mx-auto mb-3 text-primary-600 dark:text-primary-400" />
+                  <h2 className="text-lg font-bold">Two-Factor Authentication</h2>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                    Enter the code from your authenticator app
+                  </p>
+                </div>
+
+                <div>
+                  <label className="label">Verification Code</label>
+                  <input
+                    type="text"
+                    value={twoFactorCode}
+                    onChange={(e) => { setTwoFactorCode(e.target.value); setErrors({}); }}
+                    placeholder="000000"
+                    className="input text-center text-2xl tracking-[0.5em] font-mono"
+                    maxLength={6}
+                    autoFocus
+                  />
+                </div>
+
+                {errors.form && (
+                  <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 text-sm">
+                    {errors.form}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading || twoFactorCode.length < 6}
+                  className="btn-primary w-full py-3 text-lg"
+                >
+                  {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Verify'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setTwoFactorStep(false); setTwoFactorUserId(null); setTwoFactorCode(''); setErrors({}); }}
+                  className="w-full text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+                >
+                  Back to sign in
+                </button>
+              </form>
+            )
           ) : (
             <form onSubmit={handleSubmit} className="space-y-5">
               {!isLogin && (

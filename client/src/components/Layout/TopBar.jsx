@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Menu, X, Github, Sun, Moon, Monitor, Smartphone, Tablet, 
   Play, Save, FolderPlus, Terminal, Layout, Bot,
@@ -24,6 +25,7 @@ export default function TopBar({ project, isConnected }) {
     addNotification
   } = useUIStore();
 
+  const navigate = useNavigate();
   const { user, logout } = useAuthStore();
   const { createProject, currentProject, selectProject, projects } = useProject();
   const { fetchProjects } = useProjectStore();
@@ -286,8 +288,8 @@ export default function TopBar({ project, isConnected }) {
               </button>
               <hr className="my-1 border-gray-200 dark:border-dark-border" />
               <button 
-                onClick={logout}
-                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-dark-tertiary flex items-center gap-2 text-red-500"
+                onClick={() => { logout(); navigate('/'); }}
+                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-dark-secondary text-red-500"
               >
                 <LogOut className="w-4 h-4" />
                 Sign Out
