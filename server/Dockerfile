@@ -2,13 +2,12 @@ FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb836
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (git for project init, g++/python3 for native modules)
 RUN apk add --no-cache \
     git \
     python3 \
     make \
-    g++ \
-    nginx
+    g++
 
 # Copy package files
 COPY package*.json ./
@@ -18,7 +17,6 @@ RUN npm install --only=production
 
 # Copy source code
 COPY src/ ./src/
-COPY .env .env
 
 # Create data directories
 RUN mkdir -p /data/projects
