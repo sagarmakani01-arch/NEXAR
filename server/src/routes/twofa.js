@@ -1,5 +1,5 @@
 import express from 'express';
-import { authenticator } from 'otplib';
+import { authenticator } from '@otplib/preset-default';
 import { v4 as uuidv4 } from 'uuid';
 import QRCode from 'qrcode';
 import { userOps } from '../config/database.js';
