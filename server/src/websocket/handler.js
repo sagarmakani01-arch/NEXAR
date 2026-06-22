@@ -173,7 +173,7 @@ export function initializeWebSocket(server, allowedOrigins = ['*']) {
       }
     });
 
-    // AI Code Generation
+    // AI Code Generation — streams response to chat AND writes files to project
     socket.on('ai:generate', async ({ projectId, prompt, context, options }) => {
       try {
         if (projectId) {
@@ -183,8 +183,29 @@ export function initializeWebSocket(server, allowedOrigins = ['*']) {
           }
         }
 
+        let fullResponse = '';
         for await (const chunk of ollamaService.generateCode(prompt, context, options)) {
+          fullResponse += chunk;
           socket.emit('ai:chunk', { chunk });
+        }
+
+        // Parse and write files from the response
+        if (projectId) {
+          const project = await projectManager.getProject(projectId);
+          const files = parseAIFiles(fullResponse);
+          let fileCount = 0;
+          for (const [filePath, content] of Object.entries(files)) {
+            try {
+              await fileService.writeFile(project.path, filePath, content);
+              fileCount++;
+              io.to(`project:${projectId}`).emit('file:created', { filePath, content });
+            } catch (fileErr) {
+              console.error(`[ai:generate] Skipping "${filePath}": ${fileErr.message}`);
+            }
+          }
+          if (fileCount > 0) {
+            socket.emit('ai:chunk', { chunk: `\n\n✅ Generated ${fileCount} file(s): ${Object.keys(files).join(', ')}` });
+          }
         }
         
         socket.emit('ai:complete', { projectId });
@@ -294,4 +315,28 @@ export function initializeWebSocket(server, allowedOrigins = ['*']) {
   });
 
   return io;
+}
+
+// Parse AI response for file blocks — supports ===FILE=== format and markdown code blocks with paths
+function parseAIFiles(response) {
+  const files = {};
+
+  // Try ===FILE: path===...===ENDFILE=== format
+  const fileRegex = /===FILE:\s*(.+?)===\n([\s\S]*?)===ENDFILE===/g;
+  let match;
+  while ((match = fileRegex.exec(response)) !== null) {
+    let filePath = match[1].trim().replace(/^[/\\]+|[/\\]+$/g, '');
+    if (filePath) files[filePath] = match[2].trim();
+  }
+
+  // Fallback: try markdown code blocks with file path in the opening tag
+  if (Object.keys(files).length === 0) {
+    const blockRegex = /```(?:\w+)?\s*(?:\/\/)?\s*([^\n]+?\.\w+)\s*\n([\s\S]*?)```/g;
+    while ((match = blockRegex.exec(response)) !== null) {
+      let filePath = match[1].trim().replace(/^[/\\]+|[/\\]+$/g, '');
+      if (filePath) files[filePath] = match[2].trim();
+    }
+  }
+
+  return files;
 }

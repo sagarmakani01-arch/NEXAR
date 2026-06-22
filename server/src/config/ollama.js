@@ -101,7 +101,17 @@ Guidelines:
 - Optimize for performance and accessibility
 - No placeholder code - everything must work
 - No watermarks, attribution text, or branding of any kind
-- Return ONLY the code files, no markdown explanations unless asked`,
+- Output each file using this format:
+
+===FILE: path/to/file.ext===
+<file content here>
+===ENDFILE===
+
+Example:
+===FILE: src/App.jsx===
+import React from 'react';
+export default function App() { return <div>Hello</div>; }
+===ENDFILE===`,
 
   codeReview: `You are a senior code reviewer. Analyze code for:
 - Security vulnerabilities
