@@ -18,6 +18,9 @@ function getBaseUrl(req) {
 
 // Redirect to Google OAuth
 router.get('/google', (req, res) => {
+  if (!GOOGLE_CLIENT_ID) {
+    return res.redirect(`${CLIENT_URL}/login?error=oauth_not_configured`);
+  }
   const baseUrl = getBaseUrl(req);
   const redirectUri = `${baseUrl}/api/auth/oauth/google/callback`;
   const url =
@@ -94,6 +97,9 @@ router.get('/google/callback', async (req, res) => {
 
 // Redirect to GitHub OAuth
 router.get('/github', (req, res) => {
+  if (!GITHUB_CLIENT_ID) {
+    return res.redirect(`${CLIENT_URL}/login?error=oauth_not_configured`);
+  }
   const baseUrl = getBaseUrl(req);
   const redirectUri = `${baseUrl}/api/auth/oauth/github/callback`;
   const url =

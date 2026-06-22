@@ -2,12 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight, Sparkles, Shield, Server, Cpu, Users, GitBranch,
-  Lock, Globe, Zap, Play, Star, Check, ChevronRight, Menu, X
+  Lock, Globe, Zap, Star, Check, ChevronRight, Menu, X
 } from 'lucide-react';
 
 export default function LandingPage() {
   const navigate = useNavigate();
-  const [isVideoOpen, setIsVideoOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const canvasRef = useRef(null);
 
@@ -204,13 +203,6 @@ export default function LandingPage() {
             >
               Start Building Free
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </button>
-            <button
-              onClick={() => setIsVideoOpen(true)}
-              className="px-8 py-4 bg-slate-800/40 hover:bg-slate-800/60 border border-slate-700/40 rounded-xl font-semibold text-base flex items-center justify-center gap-2 transition-all duration-300"
-            >
-              <Play className="w-4 h-4" />
-              Watch Overview
             </button>
           </div>
         </div>
@@ -430,33 +422,6 @@ export default function LandingPage() {
         </div>
       </footer>
 
-      {/* Video Modal */}
-      {isVideoOpen && (
-        <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={() => setIsVideoOpen(false)}
-        >
-          <div
-            className="bg-slate-900 rounded-2xl overflow-hidden max-w-2xl w-full shadow-2xl border border-slate-700/50"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="aspect-video bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
-              <div className="text-center">
-                <Play className="w-16 h-16 text-blue-400 mx-auto mb-4" />
-                <p className="text-sm text-slate-400">Product overview video</p>
-              </div>
-            </div>
-            <div className="p-6 flex justify-end">
-              <button
-                onClick={() => setIsVideoOpen(false)}
-                className="px-4 py-2 text-sm text-slate-400 hover:text-white transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
