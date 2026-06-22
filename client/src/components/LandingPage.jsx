@@ -421,6 +421,7 @@ export default function LandingPage() {
           <div className="border-t border-slate-800/30 pt-8 flex flex-col md:flex-row justify-between items-center text-xs text-slate-600">
             <div>&copy; 2024 NEXAR. All rights reserved.</div>
             <div className="flex gap-6 mt-4 md:mt-0">
+              <a href="https://github.com/sagarmakani01-arch/NEXAR" target="_blank" rel="noopener noreferrer" className="hover:text-slate-400 transition-colors">GitHub</a>
               <a href="#" className="hover:text-slate-400 transition-colors">Documentation</a>
               <a href="#" className="hover:text-slate-400 transition-colors">Privacy</a>
               <a href="#" className="hover:text-slate-400 transition-colors">Terms</a>

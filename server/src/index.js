@@ -11,6 +11,7 @@ import { initializeWebSocket } from './websocket/handler.js';
 
 // Routes
 import authRoutes from './routes/auth.js';
+import oauthRoutes from './routes/oauth.js';
 import projectRoutes from './routes/projects.js';
 import fileRoutes from './routes/files.js';
 import aiRoutes from './routes/ai.js';
@@ -70,6 +71,7 @@ app.use('/api/auth/', authLimiter);
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/auth/oauth', oauthRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/files', fileRoutes);
 app.use('/api/ai', aiRoutes);

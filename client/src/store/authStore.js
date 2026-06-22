@@ -14,6 +14,18 @@ export const useAuthStore = create(
       setLoading: (loading) => set({ isLoading: loading }),
       setError: (error) => set({ error }),
 
+      loginWithToken: async (token) => {
+        set({ isLoading: true, error: null, token });
+        try {
+          const { data } = await authAPI.getMe();
+          set({ user: data.user, token, isAuthenticated: true, isLoading: false });
+          return data;
+        } catch (error) {
+          set({ token: null, error: 'OAuth login failed', isLoading: false });
+          throw error;
+        }
+      },
+
       login: async (email, password) => {
         set({ isLoading: true, error: null });
         try {

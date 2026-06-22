@@ -80,8 +80,9 @@ async function execute(sqlStr, params = []) {
 async function createTablesPostgres() {
   const tables = [
     `CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
-      name TEXT, avatar_url TEXT, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+      id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT,
+      name TEXT, avatar_url TEXT, provider TEXT, provider_id TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
     )`,
     `CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, description TEXT,
@@ -133,8 +134,9 @@ async function createTablesPostgres() {
 function createTablesSqlite() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
-      name TEXT, avatar_url TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT,
+      name TEXT, avatar_url TEXT, provider TEXT, provider_id TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, description TEXT,
@@ -190,9 +192,10 @@ export function getPool() {
 }
 
 export const userOps = {
-  create: (id, email, passwordHash, name) =>
-    execute(adaptSql('INSERT INTO users (id, email, password_hash, name) VALUES ($1, $2, $3, $4)'), [id, email, passwordHash, name]),
+  create: (id, email, passwordHash, name, provider = null, providerId = null) =>
+    execute(adaptSql('INSERT INTO users (id, email, password_hash, name, provider, provider_id) VALUES ($1, $2, $3, $4, $5, $6)'), [id, email, passwordHash, name, provider, providerId]),
   findByEmail: (email) => queryOne(adaptSql('SELECT * FROM users WHERE email = $1'), [email]),
+  findByProvider: (provider, providerId) => queryOne(adaptSql('SELECT * FROM users WHERE provider = $1 AND provider_id = $2'), [provider, providerId]),
   findById: (id) => queryOne(adaptSql('SELECT * FROM users WHERE id = $1'), [id]),
   update: (id, updates) => {
     const keys = Object.keys(updates);
