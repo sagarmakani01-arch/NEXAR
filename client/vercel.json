@@ -2,7 +2,7 @@
   "buildCommand": "vite build",
   "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "https://nexar-api-9m3r.onrender.com/api/$1" },
+    { "source": "/api/(.*)", "destination": "https://nexar-api-1f4j.onrender.com/api/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
