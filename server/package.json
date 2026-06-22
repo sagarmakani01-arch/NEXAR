@@ -11,6 +11,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@google-cloud/firestore": "^8.6.0",
     "@otplib/preset-default": "^12.0.1",
     "archiver": "^6.0.1",
     "bcryptjs": "^2.4.3",
