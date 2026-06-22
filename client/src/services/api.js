@@ -36,7 +36,12 @@ export const authAPI = {
   register: (email, password, name) => api.post('/auth/register', { email, password, name }),
   getMe: () => api.get('/auth/me'),
   updateProfile: (data) => api.put('/auth/profile', data),
-  refresh: () => api.post('/auth/refresh')
+  refresh: () => api.post('/auth/refresh'),
+  twoFAChallenge: (userId, token) => api.post('/auth/2fa/challenge', { userId, token }),
+  twoFASetup: () => api.post('/auth/2fa/setup'),
+  twoFAVerify: (token) => api.post('/auth/2fa/verify', { token }),
+  twoFADisable: (token) => api.post('/auth/2fa/disable', { token }),
+  twoFAStatus: () => api.get('/auth/2fa/status')
 };
 
 export const projectAPI = {

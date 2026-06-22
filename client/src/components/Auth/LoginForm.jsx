@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Mail, Lock, User, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Mail, Lock, User, Eye, EyeOff, Loader2, Shield } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore.js';
 import { useUIStore } from '../../store/uiStore';
+import { authAPI } from '../../services/api';
 
 export default function LoginForm() {
   const { login, register, loginWithToken } = useAuthStore();
@@ -13,6 +14,9 @@ export default function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [oauthLoading, setOauthLoading] = useState('');
+  const [twoFactorStep, setTwoFactorStep] = useState(false);
+  const [twoFactorUserId, setTwoFactorUserId] = useState(null);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -56,18 +60,41 @@ export default function LoginForm() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
-    
+
     setLoading(true);
     try {
       if (isLogin) {
-        await login(form.email, form.password);
+        const { data } = await authAPI.login(form.email, form.password);
+        if (data.require2fa) {
+          setTwoFactorStep(true);
+          setTwoFactorUserId(data.userId);
+          setTwoFactorCode('');
+        } else {
+          await login(form.email, form.password);
+          addNotification({ type: 'success', title: 'Welcome back!' });
+        }
       } else {
         await register(form.email, form.password, form.name);
+        addNotification({ type: 'success', title: 'Account created!' });
       }
-      addNotification({ type: 'success', title: isLogin ? 'Welcome back!' : 'Account created!' });
     } catch (error) {
       const message = error.response?.data?.error || (isLogin ? 'Login failed' : 'Registration failed');
       setErrors({ form: message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTwoFactorSubmit = async (e) => {
+    e.preventDefault();
+    if (!twoFactorCode.trim()) return;
+    setLoading(true);
+    try {
+      const { data } = await authAPI.twoFAChallenge(twoFactorUserId, twoFactorCode.trim());
+      await loginWithToken(data.token);
+      addNotification({ type: 'success', title: 'Welcome back!' });
+    } catch (error) {
+      setErrors({ form: error.response?.data?.error || 'Invalid verification code' });
     } finally {
       setLoading(false);
     }
@@ -127,87 +154,134 @@ export default function LoginForm() {
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {!isLogin && (
+          {twoFactorStep ? (
+            <form onSubmit={handleTwoFactorSubmit} className="space-y-5">
+              <div className="text-center mb-4">
+                <Shield className="w-12 h-12 mx-auto mb-3 text-primary-600 dark:text-primary-400" />
+                <h2 className="text-lg font-bold">Two-Factor Authentication</h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  Enter the code from your authenticator app
+                </p>
+              </div>
+
               <div>
-                <label className="label">Name</label>
+                <label className="label">Verification Code</label>
+                <input
+                  type="text"
+                  value={twoFactorCode}
+                  onChange={(e) => { setTwoFactorCode(e.target.value); setErrors({}); }}
+                  placeholder="000000"
+                  className="input text-center text-2xl tracking-[0.5em] font-mono"
+                  maxLength={6}
+                  autoFocus
+                />
+              </div>
+
+              {errors.form && (
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 text-sm">
+                  {errors.form}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading || twoFactorCode.length < 6}
+                className="btn-primary w-full py-3 text-lg"
+              >
+                {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Verify'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setTwoFactorStep(false); setTwoFactorUserId(null); setTwoFactorCode(''); setErrors({}); }}
+                className="w-full text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+              >
+                Back to sign in
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {!isLogin && (
+                <div>
+                  <label className="label">Name</label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type="text"
+                      name="name"
+                      value={form.name}
+                      onChange={handleChange}
+                      placeholder="Your name"
+                      className="input pl-10"
+                      autoComplete="name"
+                    />
+                  </div>
+                  {errors.name && <p className="text-sm text-red-500 mt-1">{errors.name}</p>}
+                </div>
+              )}
+
+              <div>
+                <label className="label">Email</label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <input
-                    type="text"
-                    name="name"
-                    value={form.name}
+                    type="email"
+                    name="email"
+                    value={form.email}
                     onChange={handleChange}
-                    placeholder="Your name"
+                    placeholder="you@example.com"
                     className="input pl-10"
-                    autoComplete="name"
+                    autoComplete="email"
                   />
                 </div>
-                {errors.name && <p className="text-sm text-red-500 mt-1">{errors.name}</p>}
+                {errors.email && <p className="text-sm text-red-500 mt-1">{errors.email}</p>}
               </div>
-            )}
 
-            <div>
-              <label className="label">Email</label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="email"
-                  name="email"
-                  value={form.email}
-                  onChange={handleChange}
-                  placeholder="you@example.com"
-                  className="input pl-10"
-                  autoComplete="email"
-                />
+              <div>
+                <label className="label">Password</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    name="password"
+                    value={form.password}
+                    onChange={handleChange}
+                    placeholder="••••••••"
+                    className="input pl-10 pr-10"
+                    autoComplete={isLogin ? 'current-password' : 'new-password'}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+                {errors.password && <p className="text-sm text-red-500 mt-1">{errors.password}</p>}
               </div>
-              {errors.email && <p className="text-sm text-red-500 mt-1">{errors.email}</p>}
-            </div>
 
-            <div>
-              <label className="label">Password</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  name="password"
-                  value={form.password}
-                  onChange={handleChange}
-                  placeholder="••••••••"
-                  className="input pl-10 pr-10"
-                  autoComplete={isLogin ? 'current-password' : 'new-password'}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                </button>
-              </div>
-              {errors.password && <p className="text-sm text-red-500 mt-1">{errors.password}</p>}
-            </div>
-
-            {errors.form && (
-              <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 text-sm">
-                {errors.form}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn-primary w-full py-3 text-lg"
-            >
-              {loading ? (
-                <Loader2 className="w-5 h-5 animate-spin mx-auto" />
-              ) : isLogin ? (
-                'Sign In'
-              ) : (
-                'Create Account'
+              {errors.form && (
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 text-sm">
+                  {errors.form}
+                </div>
               )}
-            </button>
-          </form>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="btn-primary w-full py-3 text-lg"
+              >
+                {loading ? (
+                  <Loader2 className="w-5 h-5 animate-spin mx-auto" />
+                ) : isLogin ? (
+                  'Sign In'
+                ) : (
+                  'Create Account'
+                )}
+              </button>
+            </form>
+          )}
 
           <p className="text-center text-sm text-gray-600 dark:text-gray-400 mt-6">
             {isLogin ? "Don't have an account?" : 'Already have an account?'}

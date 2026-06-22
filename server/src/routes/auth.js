@@ -63,9 +63,13 @@ router.post('/login', async (req, res) => {
     if (!valid) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    
+
+    if (user.totp_enabled) {
+      return res.json({ require2fa: true, userId: user.id });
+    }
+
     const token = generateToken(user);
-    
+
     res.json({
       user: { id: user.id, email: user.email, name: user.name, avatar_url: user.avatar_url },
       token

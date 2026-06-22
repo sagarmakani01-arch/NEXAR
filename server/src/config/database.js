@@ -82,6 +82,7 @@ async function createTablesPostgres() {
     `CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT,
       name TEXT, avatar_url TEXT, provider TEXT, provider_id TEXT,
+      totp_secret TEXT, totp_enabled BOOLEAN DEFAULT FALSE, recovery_codes TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
     )`,
     `CREATE TABLE IF NOT EXISTS projects (
@@ -122,6 +123,15 @@ async function createTablesPostgres() {
   for (const sql of tables) {
     await execute(sql);
   }
+  // Migrate existing tables — add 2FA columns if missing
+  const pgMigrations = [
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT FALSE`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS recovery_codes TEXT`,
+  ];
+  for (const sql of pgMigrations) {
+    try { await execute(sql); } catch (e) { /* column may already exist */ }
+  }
   await execute(`
     CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id);
     CREATE INDEX IF NOT EXISTS idx_builds_project ON builds(project_id);
@@ -136,6 +146,7 @@ function createTablesSqlite() {
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT,
       name TEXT, avatar_url TEXT, provider TEXT, provider_id TEXT,
+      totp_secret TEXT, totp_enabled INTEGER DEFAULT 0, recovery_codes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE IF NOT EXISTS projects (
@@ -178,6 +189,13 @@ function createTablesSqlite() {
     CREATE INDEX IF NOT EXISTS idx_ai_chats_project ON ai_chats(project_id);
     CREATE INDEX IF NOT EXISTS idx_collaborators_project ON project_collaborators(project_id);
   `);
+
+  try {
+    const cols = db.pragma('table_info(users)').map(c => c.name);
+    if (!cols.includes('totp_secret')) db.exec('ALTER TABLE users ADD COLUMN totp_secret TEXT');
+    if (!cols.includes('totp_enabled')) db.exec('ALTER TABLE users ADD COLUMN totp_enabled INTEGER DEFAULT 0');
+    if (!cols.includes('recovery_codes')) db.exec('ALTER TABLE users ADD COLUMN recovery_codes TEXT');
+  } catch (e) { /* ignore */ }
 }
 
 function adaptSql(sqlStr) {

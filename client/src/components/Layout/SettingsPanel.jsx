@@ -47,6 +47,7 @@ export default function SettingsPanel() {
   const [profileForm, setProfileForm] = useState({ name: user?.name || '', email: user?.email || '' });
   const [passwordForm, setPasswordForm] = useState({ current: '', new: '', confirm: '' });
   const [saving, setSaving] = useState(false);
+  const [twoFA, setTwoFA] = useState({ enabled: false, loading: false, qrCode: null, secret: null, code: '', recoveryCodes: null, step: 'idle' });
 
   const sections = [
     { id: 'editor', label: 'Editor', icon: Code2 },
@@ -401,6 +402,115 @@ export default function SettingsPanel() {
                   {saving ? 'Updating...' : 'Update Password'}
                 </button>
               </div>
+            </div>
+
+            {/* Two-Factor Authentication */}
+            <div className="bg-gray-50 dark:bg-dark-tertiary/50 rounded-lg p-4">
+              <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-4">Two-Factor Authentication</h3>
+              {twoFA.step === 'idle' && (
+                <div>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                    Add an extra layer of security by requiring a verification code from your authenticator app.
+                  </p>
+                  <button
+                    onClick={async () => {
+                      setTwoFA(s => ({ ...s, loading: true }));
+                      try {
+                        const { data } = await authAPI.twoFASetup();
+                        setTwoFA(s => ({ ...s, loading: false, qrCode: data.qrCode, secret: data.secret, step: 'setup' }));
+                        // Check current status
+                        const statusRes = await authAPI.twoFAStatus();
+                        setTwoFA(s => ({ ...s, enabled: statusRes.data.enabled }));
+                      } catch (err) {
+                        setTwoFA(s => ({ ...s, loading: false }));
+                        addNotification({ type: 'error', title: 'Failed', message: err.response?.data?.error || 'Could not setup 2FA' });
+                      }
+                    }}
+                    disabled={twoFA.loading}
+                    className="btn-primary"
+                  >
+                    {twoFA.loading ? 'Setting up...' : (twoFA.enabled ? 'Reconfigure' : 'Enable 2FA')}
+                  </button>
+                  {twoFA.enabled && (
+                    <button
+                      onClick={async () => {
+                        setTwoFA(s => ({ ...s, loading: true }));
+                        try {
+                          await authAPI.twoFADisable('');
+                          setTwoFA(s => ({ ...s, enabled: false, loading: false }));
+                          addNotification({ type: 'success', title: '2FA Disabled' });
+                        } catch (err) {
+                          setTwoFA(s => ({ ...s, loading: false }));
+                          addNotification({ type: 'error', title: 'Failed', message: err.response?.data?.error || 'Could not disable 2FA' });
+                        }
+                      }}
+                      disabled={twoFA.loading}
+                      className="btn-danger ml-2"
+                    >
+                      Disable 2FA
+                    </button>
+                  )}
+                </div>
+              )}
+              {twoFA.step === 'setup' && (
+                <div className="space-y-4">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.):
+                  </p>
+                  {twoFA.qrCode && <img src={twoFA.qrCode} alt="2FA QR Code" className="mx-auto w-48 h-48" />}
+                  {twoFA.secret && (
+                    <div className="text-center">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Or enter this key manually:</p>
+                      <code className="text-sm font-mono bg-white dark:bg-dark-bg px-3 py-2 rounded border border-gray-200 dark:border-dark-border select-all">{twoFA.secret}</code>
+                    </div>
+                  )}
+                  <div>
+                    <label className="label">Verification Code</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={twoFA.code}
+                        onChange={(e) => setTwoFA(s => ({ ...s, code: e.target.value }))}
+                        placeholder="000000"
+                        className="input text-center text-lg tracking-widest font-mono flex-1"
+                        maxLength={6}
+                      />
+                      <button
+                        onClick={async () => {
+                          if (twoFA.code.length < 6) return;
+                          setTwoFA(s => ({ ...s, loading: true }));
+                          try {
+                            const { data } = await authAPI.twoFAVerify(twoFA.code);
+                            setTwoFA(s => ({ ...s, enabled: true, loading: false, recoveryCodes: data.recoveryCodes, step: 'done' }));
+                            addNotification({ type: 'success', title: '2FA Enabled' });
+                          } catch (err) {
+                            setTwoFA(s => ({ ...s, loading: false }));
+                            addNotification({ type: 'error', title: 'Invalid Code', message: err.response?.data?.error || 'Verification failed' });
+                          }
+                        }}
+                        disabled={twoFA.loading || twoFA.code.length < 6}
+                        className="btn-primary"
+                      >
+                        {twoFA.loading ? '...' : 'Verify'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {twoFA.step === 'done' && twoFA.recoveryCodes && (
+                <div className="space-y-4">
+                  <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                    <p className="text-sm font-medium text-yellow-800 dark:text-yellow-300 mb-2">Save these recovery codes!</p>
+                    <p className="text-xs text-yellow-700 dark:text-yellow-400 mb-3">Each code can be used once if you lose access to your authenticator app.</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {twoFA.recoveryCodes.map((code, i) => (
+                        <code key={i} className="text-xs font-mono bg-white dark:bg-dark-bg px-2 py-1 rounded border border-yellow-300 dark:border-yellow-700">{code}</code>
+                      ))}
+                    </div>
+                  </div>
+                  <button onClick={() => setTwoFA({ enabled: true, loading: false, qrCode: null, secret: null, code: '', recoveryCodes: null, step: 'idle' })} className="btn-primary">Done</button>
+                </div>
+              )}
             </div>
 
             <div className="bg-gray-50 dark:bg-dark-tertiary/50 rounded-lg p-4">
