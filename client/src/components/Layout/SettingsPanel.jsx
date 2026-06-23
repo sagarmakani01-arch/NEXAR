@@ -49,11 +49,11 @@ export default function SettingsPanel() {
   const [profileForm, setProfileForm] = useState({ name: user?.name || '', email: user?.email || '' });
   const [passwordForm, setPasswordForm] = useState({ current: '', new: '', confirm: '' });
   const [saving, setSaving] = useState(false);
-  const [twoFA, setTwoFA] = useState({ enabled: false, githubEnabled: false, loading: false, qrCode: null, secret: null, code: '', recoveryCodes: null, step: 'idle' });
+  const [twoFA, setTwoFA] = useState({ enabled: false, loading: false, qrCode: null, secret: null, code: '', recoveryCodes: null, step: 'idle' });
 
   useEffect(() => {
     authAPI.twoFAStatus().then(({ data }) => {
-      setTwoFA(s => ({ ...s, enabled: data.totp_enabled, githubEnabled: data.github_2fa_enabled }));
+      setTwoFA(s => ({ ...s, enabled: data.totp_enabled }));
     }).catch(() => {});
   }, []);
 
@@ -521,61 +521,7 @@ export default function SettingsPanel() {
                   )}
                 </div>
 
-                {/* GitHub 2FA Method */}
-                <div className="p-3 bg-white dark:bg-dark-bg rounded-lg border border-gray-200 dark:border-dark-border">
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <p className="font-medium text-sm">GitHub 2FA</p>
-                      <p className="text-xs text-gray-500">Verify with your GitHub account</p>
-                    </div>
-                    <span className={`badge ${twoFA.githubEnabled ? 'badge-success' : 'badge-default'}`}>{twoFA.githubEnabled ? 'Enabled' : 'Disabled'}</span>
-                  </div>
-                  <div className="flex gap-2">
-                    {!twoFA.githubEnabled && (
-                      <button
-                        onClick={async () => {
-                          setTwoFA(s => ({ ...s, loading: true }));
-                          try {
-                            const { data } = await authAPI.twoFAGitHubEnable();
-                            if (data.needLink) {
-                              window.location.href = data.redirectUrl;
-                            } else {
-                              setTwoFA(s => ({ ...s, githubEnabled: true, loading: false }));
-                              addNotification({ type: 'success', title: 'GitHub 2FA Enabled' });
-                            }
-                          } catch (err) {
-                            setTwoFA(s => ({ ...s, loading: false }));
-                            addNotification({ type: 'error', title: 'Failed', message: err.response?.data?.error || 'Could not enable' });
-                          }
-                        }}
-                        disabled={twoFA.loading}
-                        className="btn-primary text-sm py-1.5 px-3 flex items-center gap-1"
-                      >
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
-                        Enable
-                      </button>
-                    )}
-                    {twoFA.githubEnabled && (
-                      <button
-                        onClick={async () => {
-                          setTwoFA(s => ({ ...s, loading: true }));
-                          try {
-                            await authAPI.twoFAGitHubDisable();
-                            setTwoFA(s => ({ ...s, githubEnabled: false, loading: false }));
-                            addNotification({ type: 'success', title: 'GitHub 2FA Disabled' });
-                          } catch (err) {
-                            setTwoFA(s => ({ ...s, loading: false }));
-                            addNotification({ type: 'error', title: 'Failed', message: err.response?.data?.error || 'Could not disable' });
-                          }
-                        }}
-                        disabled={twoFA.loading}
-                        className="btn-danger text-sm py-1.5 px-3"
-                      >
-                        Disable
-                      </button>
-                    )}
-                  </div>
-                </div>
+
               </div>
             </div>
 
