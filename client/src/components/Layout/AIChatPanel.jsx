@@ -12,7 +12,26 @@ import { useWebSocket } from '../../hooks/useWebSocket';
 import { useUIStore } from '../../store/uiStore';
 
 const SYSTEM_PROMPTS = {
-  codeGeneration: 'Generate production-ready code...',
+  codeGeneration: `You are an expert full-stack developer. Generate production-ready, clean, well-documented code.
+Guidelines:
+- Write modern ES6+/TypeScript code
+- Use best practices (error handling, validation, security)
+- Include meaningful comments
+- Follow project structure conventions
+- Optimize for performance and accessibility
+- No placeholder code - everything must work
+- No watermarks, attribution text, or branding of any kind
+- Output each file using this format:
+
+===FILE: path/to/file.ext===
+<file content here>
+===ENDFILE===
+
+Example:
+===FILE: src/App.jsx===
+import React from 'react';
+export default function App() { return <div>Hello</div>; }
+===ENDFILE===`,
   codeReview: 'Review code for security, performance, best practices...',
   debugging: 'Debug and fix code issues...',
   architecture: 'Design scalable software architecture...',

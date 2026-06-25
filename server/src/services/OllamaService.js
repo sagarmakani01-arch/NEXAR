@@ -57,7 +57,12 @@ class OllamaService {
   async *generateCode(prompt, context = {}, options = {}) {
     const modelId = options.modelId || 'ollama-default';
     const cfg = this.getConfig(modelId);
-    const systemPrompt = options.systemPrompt || this.config.systemPrompts.codeGeneration;
+    const basePrompt = options.systemPrompt || this.config.systemPrompts.codeGeneration;
+    const systemPrompt = basePrompt + `\n\nIMPORTANT: Output each file using this format:
+
+===FILE: path/to/file.ext===
+<file content here>
+===ENDFILE===`;
     const { timeout, ...apiParams } = options.params || {};
 
     const messages = [

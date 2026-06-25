@@ -332,14 +332,26 @@ function parseAIFiles(response) {
     if (filePath) files[filePath] = match[2].trim();
   }
 
-  // Fallback: try markdown code blocks with file path in the opening tag
-  if (Object.keys(files).length === 0) {
-    const blockRegex = /```(?:\w+)?\s*(?:\/\/)?\s*([^\n]+?\.\w+)\s*\n([\s\S]*?)```/g;
-    while ((match = blockRegex.exec(response)) !== null) {
+    // Fallback: try markdown code blocks
+    // First try blocks with a file path in the opening tag
+    const blockWithPath = /```(?:\w+)?\s*(?:\/\/)?\s*([^\n]+?\.\w+)\s*\n([\s\S]*?)```/g;
+    while ((match = blockWithPath.exec(response)) !== null) {
       let filePath = match[1].trim().replace(/^[/\\]+|[/\\]+$/g, '');
       if (filePath) files[filePath] = match[2].trim();
     }
-  }
+    // If still no files, try any code block and infer filename from language/content
+    if (Object.keys(files).length === 0) {
+      const anyBlock = /```(\w+)?\s*\n([\s\S]*?)```/g;
+      let idx = 0;
+      while ((match = anyBlock.exec(response)) !== null) {
+        const lang = match[1] || '';
+        const content = match[2].trim();
+        if (!content || content.length < 30) continue;
+        const ext = ({ html: 'html', css: 'css', js: 'js', jsx: 'jsx', ts: 'ts', tsx: 'tsx', python: 'py', py: 'py', json: 'json', xml: 'xml', sql: 'sql', bash: 'sh', sh: 'sh', yaml: 'yml', md: 'md' })[lang] || 'txt';
+        files[`generated/file${idx + 1}.${ext}`] = content;
+        idx++;
+      }
+    }
 
   return files;
 }
