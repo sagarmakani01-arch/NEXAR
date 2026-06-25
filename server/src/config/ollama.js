@@ -21,7 +21,7 @@ const FREE_PROVIDER_CONFIG = {
     apiKey: () => env('GROQ_API_KEY'),
     baseURL: 'https://api.groq.com/openai/v1',
     model: 'llama-3.3-70b-versatile',
-    defaultParams: { temperature: 0.3, top_p: 0.95, max_tokens: 4096, stream: true }
+    defaultParams: { temperature: 0.3, top_p: 0.95, max_tokens: 2048, stream: true }
   },
   openrouter: {
     apiKey: () => env('OPENROUTER_API_KEY'),

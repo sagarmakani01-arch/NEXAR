@@ -184,7 +184,10 @@ export function initializeWebSocket(server, allowedOrigins = ['*']) {
         }
 
         let fullResponse = '';
-        for await (const chunk of ollamaService.generateCode(prompt, context, options)) {
+        for await (const chunk of ollamaService.generateCode(prompt, context, {
+          ...options,
+          params: { ...options?.params, timeout: 120000 }
+        })) {
           fullResponse += chunk;
           socket.emit('ai:chunk', { chunk });
         }
