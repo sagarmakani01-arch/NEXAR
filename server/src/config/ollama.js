@@ -1,4 +1,4 @@
-// AI Model Configuration — Ollama (local) + Groq + OpenRouter (all free)
+// AI Model Configuration — Ollama (local) + OpenRouter (all free)
 
 import { rateMonitor } from '../services/ProviderRateMonitor.js';
 
@@ -7,7 +7,6 @@ const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5-coder:7b';
 
 function env(key) { return process.env[key] || ''; }
 
-function groqEnabled()      { return !!env('GROQ_API_KEY'); }
 function openrouterEnabled() { return !!env('OPENROUTER_API_KEY'); }
 
 const FREE_PROVIDER_CONFIG = {
@@ -16,12 +15,6 @@ const FREE_PROVIDER_CONFIG = {
     baseURL: OLLAMA_BASE_URL,
     model: OLLAMA_MODEL,
     defaultParams: { temperature: 0.3, top_p: 0.95, max_tokens: 8192, stream: true }
-  },
-  groq: {
-    apiKey: () => env('GROQ_API_KEY'),
-    baseURL: 'https://api.groq.com/openai/v1',
-    model: 'llama-3.3-70b-versatile',
-    defaultParams: { temperature: 0.3, top_p: 0.95, max_tokens: 2048, stream: true }
   },
   openrouter: {
     apiKey: () => env('OPENROUTER_API_KEY'),
@@ -66,7 +59,6 @@ function resolveProviderConfig(provider) {
 
 function getActiveProviders() {
   const active = { ollama: resolveProviderConfig('ollama') };
-  if (groqEnabled())      active.groq      = resolveProviderConfig('groq');
   if (openrouterEnabled()) active.openrouter = resolveProviderConfig('openrouter');
   return active;
 }
@@ -75,10 +67,6 @@ function getModels() {
   const models = {
     'ollama-default': { provider: 'ollama', model: OLLAMA_MODEL, label: `${OLLAMA_MODEL} (Ollama)` }
   };
-  if (groqEnabled()) {
-    models['groq-llama3-70b'] = { provider: 'groq', model: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (Groq — free)' };
-    models['groq-llama3-8b'] = { provider: 'groq', model: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B (Groq — free)' };
-  }
   if (openrouterEnabled()) {
     for (const m of OPENROUTER_FREE_MODELS) {
       models[m.id] = { provider: 'openrouter', model: m.model, label: m.label };

@@ -1,13 +1,12 @@
 // ProviderRateMonitor — tracks per-provider API usage & auto-switches at 80%
 
 const PROVIDER_LIMITS = {
-  groq:      { daily: 1000, rpm: 30, name: 'Groq (free tier)' },
   openrouter:{ daily: 50,  rpm: 20, name: 'OpenRouter (free tier)' },
   ollama:    { daily: Infinity, rpm: Infinity, name: 'Ollama (local)' }
 };
 
-// Fallback chain: try Groq → OpenRouter → Ollama
-const FALLBACK_CHAIN = ['openrouter', 'ollama'];
+// Fallback chain: try OpenRouter → Ollama
+const FALLBACK_CHAIN = ['ollama'];
 
 class ProviderRateMonitor {
   constructor() {
